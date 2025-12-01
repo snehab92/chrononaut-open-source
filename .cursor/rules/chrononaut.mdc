@@ -1,0 +1,31 @@
+---
+alwaysApply: true
+---
+
+# Chrononaut Development Rules
+
+## Tech Stack
+- Next.js 16 App Router, TypeScript strict, shadcn/ui
+- Supabase for all backend (auth, database, storage)
+- Vercel AI SDK for Claude + Gemini
+
+## Patterns
+- Server Components by default
+- Client Components only for interactivity (forms, buttons, state)
+- Streaming for all AI responses
+- All database queries through Supabase client
+
+## AI Agents (4 total)
+- Pattern Analyst (Claude Sonnet): background analysis, metrics dashboards
+- Executive Coach (Claude Sonnet): writing, meeting preparation, interactive coaching, journal pattern analysis and insights
+- Research Assistant (Gemini Flash and Deep Research Mode): speed tasks, web search, market research
+- Communications Coach (Gemini Flash): live voice mode only
+
+## Database
+- All tables have RLS policies (users own their data)
+- Data protected by Supabase RLS and encryption at rest
+
+## Code Style
+- Descriptive variable names
+- Comments for non-obvious logic
+- Error handling with user-friendly messages

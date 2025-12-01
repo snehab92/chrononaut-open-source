@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 200" fill="none">
+  <defs>
+    <!-- Gradient for the wave -->
+    <linearGradient id="waveGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#2D5A47" stop-opacity="0.1"/>
+      <stop offset="50%" stop-color="#2D5A47" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#2D5A47" stop-opacity="0.1"/>
+    </linearGradient>
+    
+    <!-- Star pattern -->
+    <pattern id="stars" x="0" y="0" width="100" height="100" patternUnits="userSpaceOnUse">
+      <circle cx="10" cy="20" r="1" fill="#D4A84B" opacity="0.3"/>
+      <circle cx="50" cy="10" r="1.5" fill="#D4A84B" opacity="0.4"/>
+      <circle cx="80" cy="40" r="1" fill="#D4A84B" opacity="0.2"/>
+      <circle cx="30" cy="60" r="1.2" fill="#D4A84B" opacity="0.3"/>
+      <circle cx="70" cy="80" r="1" fill="#D4A84B" opacity="0.25"/>
+      <circle cx="90" cy="15" r="0.8" fill="#D4A84B" opacity="0.35"/>
+    </pattern>
+    
+    <!-- Compass rose decoration -->
+    <g id="compassPoint">
+      <path d="M0,-8 L2,0 L0,8 L-2,0 Z" fill="#D4A84B" opacity="0.6"/>
+    </g>
+  </defs>
+  
+  <!-- Background with subtle texture -->
+  <rect width="1200" height="200" fill="#2D5A47"/>
+  <rect width="1200" height="200" fill="url(#stars)"/>
+  
+  <!-- Layered waves -->
+  <path d="M0,180 Q150,140 300,160 T600,150 T900,165 T1200,155 L1200,200 L0,200 Z" 
+        fill="#1E3D32" opacity="0.5"/>
+  <path d="M0,185 Q200,155 400,175 T800,160 T1200,170 L1200,200 L0,200 Z" 
+        fill="#1E3D32" opacity="0.7"/>
+  <path d="M0,190 Q250,170 500,185 T1000,175 T1200,185 L1200,200 L0,200 Z" 
+        fill="#1E3D32"/>
+  
+  <!-- Decorative compass elements on sides -->
+  <g transform="translate(80, 100)">
+    <circle cx="0" cy="0" r="25" stroke="#D4A84B" stroke-width="1" fill="none" opacity="0.3"/>
+    <circle cx="0" cy="0" r="20" stroke="#E8DCC4" stroke-width="0.5" fill="none" opacity="0.2"/>
+    <use href="#compassPoint" transform="rotate(0)"/>
+    <use href="#compassPoint" transform="rotate(90)"/>
+    <use href="#compassPoint" transform="rotate(180)"/>
+    <use href="#compassPoint" transform="rotate(270)"/>
+  </g>
+  
+  <g transform="translate(1120, 100)">
+    <circle cx="0" cy="0" r="25" stroke="#D4A84B" stroke-width="1" fill="none" opacity="0.3"/>
+    <circle cx="0" cy="0" r="20" stroke="#E8DCC4" stroke-width="0.5" fill="none" opacity="0.2"/>
+    <use href="#compassPoint" transform="rotate(0)"/>
+    <use href="#compassPoint" transform="rotate(90)"/>
+    <use href="#compassPoint" transform="rotate(180)"/>
+    <use href="#compassPoint" transform="rotate(270)"/>
+  </g>
+  
+  <!-- Subtle dotted navigation line -->
+  <line x1="120" y1="100" x2="1080" y2="100" 
+        stroke="#D4A84B" stroke-width="1" stroke-dasharray="4 8" opacity="0.2"/>
+  
+  <!-- Decorative corner flourishes -->
+  <path d="M0,0 Q30,20 20,50" stroke="#D4A84B" stroke-width="1.5" fill="none" opacity="0.3"/>
+  <path d="M1200,0 Q1170,20 1180,50" stroke="#D4A84B" stroke-width="1.5" fill="none" opacity="0.3"/>
+</svg>
