@@ -471,6 +471,12 @@ alter table public.cue_rules enable row level security;
 alter table public.cue_instances enable row level security;
 alter table public.integration_tokens enable row level security;
 alter table public.audit_log enable row level security;
+alter table public.strength_definitions enable row level security;
+
+create policy "Anyone can read strength_definitions"
+  on public.strength_definitions for select
+  using (true);
+  
 alter table public.strength_assessments enable row level security;
 
 create policy "Users can manage own strength_assessments" 
