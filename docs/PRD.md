@@ -402,7 +402,7 @@ valuesAlignment = assessmentPct * mentionRatio
 
 | Layer | Technology |
 | --- | --- |
-| Frontend | Next.js 15 (App Router), shadcn/ui, Tailwind |
+| Frontend | Next.js 16 (App Router), shadcn/ui, Tailwind |
 | AI | Vercel AI SDK (@ai-sdk/anthropic, @ai-sdk/google) |
 | Database | Supabase PostgreSQL |
 | Auth | Supabase Auth (cookie-based) + PIN |

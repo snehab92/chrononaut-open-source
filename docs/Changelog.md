@@ -8,7 +8,7 @@ A detailed log of development sessions, learnings, and progress.
 
 ### Session Reference Info
 - **Date:** December 1, 2025
-- **Approximate Duration:** ~4.5 hours
+- **Approximate Duration:** ~8 hours
 - **Week/Day:** Week 1, Day 1
 - **Build Plan Goals:** Database Schema, Auth Enhancement, App Shell
 
@@ -16,7 +16,7 @@ A detailed log of development sessions, learnings, and progress.
 
 ### What I Set Out To Do
 
-Per Build Plan v3, Week 1 goals:
+Complete Week 1 goals today (+ ground up redo of project set up with vercel <> superbase starter template):
 1. **Day 1-2:** Create complete database schema (14 tables with RLS policies)
 2. **Day 3:** Auth enhancement with onboarding flow
 3. **Day 4-5:** App shell with global navigation menu
@@ -225,3 +225,195 @@ git add . && git commit -m "message" && git push origin main
 ---
 
 *End of December 1, 2025 session*
+
+---
+
+## Session: December 5, 2025
+
+### Session Reference Info
+- **Date:** December 5, 2025
+- **Approximate Duration:** ~4 hours
+- **Week/Day:** Week 2, Day 2-3
+- **Build Plan Goals:** TickTick Integration + Smart Task View
+
+---
+
+### What I Set Out To Do
+
+1. Debug TickTick OAuth token exchange (continued from Day 1)
+2. Get bidirectional task sync working
+3. Display tasks on dashboard
+
+---
+
+### Change Log Summary
+
+| Category | Change | Files |
+|----------|--------|-------|
+| **Auth** | Pivoted from OAuth to Direct Auth (username/password login) | `lib/ticktick/client.ts` |
+| **API** | TickTick login endpoint | `app/api/integrations/ticktick/login/route.ts` |
+| **API** | TickTick test endpoint | `app/api/integrations/ticktick/test/route.ts` |
+| **API** | TickTick disconnect endpoint | `app/api/integrations/ticktick/disconnect/route.ts` |
+| **API** | TickTick tasks fetch endpoint | `app/api/integrations/ticktick/tasks/route.ts` |
+| **API** | TickTick complete task endpoint | `app/api/integrations/ticktick/complete/route.ts` |
+| **API** | TickTick update due date endpoint | `app/api/integrations/ticktick/update-date/route.ts` |
+| **UI** | Settings integrations card with login modal | `components/settings/integrations-card.tsx` |
+| **UI** | Task list component with Today/Week toggle | `components/dashboard/task-list.tsx` |
+| **UI** | Dashboard fetches and displays TickTick tasks | `app/(authenticated)/dashboard/page.tsx` |
+| **Deps** | Added shadcn dialog, calendar, popover components | `components/ui/` |
+| **Deps** | Downgraded react-day-picker to v8 for Tailwind v3 compat | `package.json` |
+
+---
+
+### Daily Summary
+
+#### 1. Completed Tasks Summary
+
+- ✅ Pivoted from OAuth to Direct Auth after 2 days of OAuth debugging
+- ✅ TickTick client library with login, read tasks, complete task methods
+- ✅ Settings UI with Connect/Disconnect TickTick functionality
+- ✅ Dashboard displays real TickTick tasks
+- ✅ Complete task works (bidirectional sync!)
+- ✅ Today/This Week toggle with timeline view
+- ✅ Date picker UI added (local update works, sync pending)
+
+---
+
+#### 2. Completed Tasks Drill-Down
+
+##### 2a. OAuth → Direct Auth Pivot (~1 hour decision + 2 hours implementation)
+
+**Context:** After 2 days of OAuth debugging (7 different patterns tested), all returned 401 errors despite matching implementations from working repos (ticktick-mcp, TickTickSync).
+
+**Discovery:** TickTickSync (15k+ users Obsidian plugin) uses Direct Auth via `/api/v2/user/signon` endpoint, not OAuth.
+
+**Implementation:**
+- `TickTickClient.login(username, password)` → returns session token
+- Token stored in `integration_tokens` table
+- `TickTickClient.fromToken(token, inboxId)` for subsequent requests
+
+**Key headers required:**
+```typescript
+{
+  'x-device': JSON.stringify({ platform: 'web', version: 6070, ... }),
+  'Cookie': `t=${token}`,
+  't': token
+}
+```
+
+---
+
+##### 2b. Task Sync Implementation (~1 hour)
+
+**Read operations:**
+- `getAllTasks()` via `/batch/check/0` endpoint
+- Returns all projects, tasks, and tags in one call
+
+**Write operations:**
+- `completeTask(projectId, taskId)` via `/batch/task` with `status: 2`
+- `updateTaskDueDate()` via same endpoint (implemented but sync not working yet)
+
+**Batch payload format:**
+```typescript
+{
+  add: [],
+  addAttachments: [],
+  delete: [],
+  deleteAttachments: [],
+  updateAttachments: [],
+  update: [{ id, projectId, status: 2, modifiedTime }]
+}
+```
+
+---
+
+##### 2c. Dashboard Task Display (~30 min)
+
+- Server component fetches tasks via TickTick client
+- Filters for tasks due today/this week
+- Client component handles completion and date changes
+- Priority colors match TickTick (red=high, yellow=medium, blue=low)
+
+---
+
+##### 2d. Today/Week Toggle (~30 min)
+
+**Today view:**
+- Tasks due today + overdue
+- Simple list sorted by priority
+
+**Week view (timeline):**
+- Tasks grouped by day
+- Visual timeline with dots and connecting lines
+- Day headers: "Today", "Tomorrow", "Overdue", or "Wednesday, Dec 11"
+
+---
+
+##### 2e. Dependency Issues (~20 min)
+
+**Problem:** shadcn calendar component uses Tailwind v4 syntax (`--spacing(8)`)
+**Solution:** Rewrote calendar.tsx for Tailwind v3 + downgraded react-day-picker to v8
+
+```bash
+npm install react-day-picker@^8.10.1 date-fns@^3.6.0 --legacy-peer-deps
+```
+
+---
+
+#### 3. Key Learnings
+
+##### Technical Learnings
+
+| Concept | What I Learned |
+|---------|----------------|
+| **OAuth vs Direct Auth** | OAuth is preferred (limited scope, user trust, revocation) but Direct Auth works when OAuth is broken/undocumented |
+| **Session tokens** | Direct Auth returns session token, not OAuth refresh token. Simpler but user must provide actual password |
+| **TickTick batch API** | `/batch/task` endpoint handles creates, updates, deletes in one call |
+| **x-device header** | TickTick requires device fingerprint with version >= 6070 |
+| **Tailwind v3 vs v4** | shadcn latest uses v4 syntax; need to check compatibility |
+
+##### Security Considerations
+
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| Password in transit | Low | HTTPS only, not stored |
+| Token in DB | Medium | RLS policies, consider Vault later |
+| Full account access | Medium | Client only implements safe operations |
+
+---
+
+#### 4. Pending Items
+
+| Item | Priority | Notes |
+|------|----------|-------|
+| Due date sync to TickTick | High | API returns success but date doesn't update - may need `timeZone` field |
+| Supabase Vault for token | Low | Token protected by RLS, Vault is nice-to-have |
+| Create new task | Medium | Not in current scope but user requested |
+| Google Calendar integration | High | Next major integration (Week 9 per build plan) |
+| Finish sync engine | Medium | 15-min polling, conflict resolution |
+
+---
+
+#### 5. Final System State
+
+**Working:**
+- ✅ TickTick Direct Auth login
+- ✅ Token storage in Supabase
+- ✅ Fetch tasks from TickTick
+- ✅ Display tasks on dashboard
+- ✅ Complete task (syncs to TickTick)
+- ✅ Today/Week toggle
+- ✅ Date picker UI
+- ✅ Settings connect/disconnect
+
+**Not Working:**
+- ❌ Due date changes don't sync to TickTick (API returns success but no change)
+
+**Next Session:**
+- Debug due date sync OR move on
+- Google Calendar integration research
+- Consider "create task" feature
+
+---
+
+*End of December 5, 2025 session*

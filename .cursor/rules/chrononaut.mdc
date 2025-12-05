@@ -5,7 +5,7 @@ alwaysApply: true
 # Chrononaut Development Rules
 
 ## Tech Stack
-- Next.js 15 App Router, TypeScript strict, shadcn/ui
+- Next.js 16 App Router, TypeScript strict, shadcn/ui
 - Supabase for all backend (auth, database, storage)
 - Vercel AI SDK for Claude + Gemini
 

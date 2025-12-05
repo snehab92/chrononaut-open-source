@@ -107,6 +107,14 @@ create table public.notes (
   -- For assessment notes (Self-Compassion, Values Alignment, Strengths Profile, Executive Skills)
   assessment_type assessment_type,
   assessment_score numeric(5,2),
+
+    -- Location (for map view)
+  location_name text,
+  location_lat numeric(10,7),
+  location_lng numeric(10,7),
+  
+  -- Photo (for quick capture)
+  photo_url text,
   
   created_at timestamp with time zone default now(),
   updated_at timestamp with time zone default now()
@@ -476,7 +484,7 @@ alter table public.strength_definitions enable row level security;
 create policy "Anyone can read strength_definitions"
   on public.strength_definitions for select
   using (true);
-  
+
 alter table public.strength_assessments enable row level security;
 
 create policy "Users can manage own strength_assessments" 

@@ -1,7 +1,21 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Settings } from "lucide-react";
+import { createClient } from "@/lib/supabase/server";
+import { IntegrationsCard } from "@/components/settings/integrations-card";
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  // Fetch user's connected integrations
+  const { data: integrations } = await supabase
+    .from('integration_tokens')
+    .select('provider, updated_at')
+    .eq('user_id', user?.id);
+  
+  // Create a map of connected providers
+  const connectedProviders = new Map(
+    integrations?.map(i => [i.provider, i.updated_at]) || []
+  );
+
   return (
     <div className="p-6 space-y-6">
       <div>
@@ -11,22 +25,7 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Settings className="h-5 w-5" />
-            Coming Soon
-          </CardTitle>
-          <CardDescription>
-            Account settings, integrations (Whoop, TickTick, Google Calendar), and preferences.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-center h-64 text-muted-foreground">
-            Week 2 & 4 of build plan
-          </div>
-        </CardContent>
-      </Card>
+      <IntegrationsCard connectedProviders={connectedProviders} />
     </div>
   );
 }

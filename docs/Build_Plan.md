@@ -9,12 +9,17 @@
 **Status:** Ready to Execute
 
 ---
+## Reading List
+- Decisive, Heath Brothers
+- 
+
+---
 
 ## Tool Efficiency Map
 
 | Tool | Use | Time Savings |
 | --- | --- | --- |
-| **Vercel Supabase Starter** | Pre-configured Next.js 15 + Auth + shadcn/ui | ~3 days |
+| **Vercel Supabase Starter** | Pre-configured Next.js 16 + Auth + shadcn/ui | ~3 days |
 | **v0.dev** | Natural language → React components | UI 10x faster |
 | **Cursor + MCP** | AI coding with DB context | Backend 3-5x faster |
 | **Supabase CLI** | Migration-based schema | Safe DB changes |
@@ -42,7 +47,7 @@ npm run dev
 ### 3. Cursor Rules (.cursor/rules/chrononaut.mdc)
 
 ```markdown
-# Tech Stack- Next.js 15 App Router, TypeScript strict, shadcn/ui
+# Tech Stack- Next.js 16 App Router, TypeScript strict, shadcn/ui
 - Supabase for all backend
 - Vercel AI SDK for Claude + Gemini
 # Patterns- Server Components default
@@ -257,10 +262,11 @@ Dashboard analytics panel matching prototype:
 ```
 
 **System prompts (from PRD 4.3.2):**
-- Executive Coach: DBT/ACT trained, ADHD-experienced, direct + warm
+- Executive Coach - mode 1: DBT/ACT trained, ADHD-experienced, direct + warm, 1:1 executive coaching
+- Executive Coach - mode 2: advisory panel of c-suite. Helps critique ideas, find vulnerabilities across POVs (pro vs con, conflicting priorities, etc.)
 - Pattern Analyst: Technical, data-focused
 - Research Assistant: Fast, summarization-oriented
-- Communications Coach: Speech coaching focus
+- Communications Coach: Speech coaching focus, can take on 1:1 roleplay as well as panel:1 role play
 
 ### Day 3-4: Pattern Analysis Engine
 

@@ -8,7 +8,7 @@ A log of significant technical and architectural decisions made during developme
 
 | ID | Date | Decision | Status |
 |----|------|----------|--------|
-| SCHEMA-001 | 2025-12-01 | 14-table schema with RLS policies | ✅ Implemented |
+| SCHEMA-001 | 2025-12-01 | 14-table schema with RLS policies (instead of original 12 - added two assessments to schema) | ✅ Implemented |
 | SCHEMA-002 | 2025-12-01 | Location fields on notes table for map view | ✅ Implemented |
 | INFRA-001 | 2025-12-01 | Disable cacheComponents for auth compatibility | ✅ Implemented |
 | DESIGN-001 | 2025-12-01 | Warm color palette (forest green, mustard, cream) | ✅ Implemented |
@@ -117,3 +117,131 @@ photo_url text
 ---
 
 *End of December 1, 2025 decisions*
+
+---
+
+## December 5, 2025
+
+### INT-001: TickTick Direct Auth Instead of OAuth
+
+**Context:** TickTick OAuth token exchange failed after 2 days of debugging (7 different implementation patterns). Working open-source projects (ticktick-mcp, TickTickSync) use different approaches.
+
+**Decision:** Use Direct Auth (username/password login) via `/api/v2/user/signon` endpoint instead of OAuth.
+
+**Rationale:**
+- OAuth token exchange returns 401 for unknown reasons despite matching working implementations
+- TickTickSync (15k+ users) uses Direct Auth successfully for years
+- Direct Auth is simpler: one endpoint, immediate token
+- Timeline pressure: 2 days already spent on OAuth
+
+**Trade-offs:**
+
+| OAuth (not working) | Direct Auth (implemented) |
+|---------------------|---------------------------|
+| User enters password on TickTick site | User enters password in our app |
+| Limited scope access | Full account access |
+| User can revoke in TickTick settings | User must change password to revoke |
+| Industry standard | Session-based, less standard |
+| Works with 2FA/SSO | Requires password (SSO users must set one) |
+
+**Security Mitigations:**
+- Password only used for initial login, not stored
+- Session token stored in Supabase with RLS
+- Client library only implements safe operations (read, complete, update date)
+- Destructive operations (delete, edit title) intentionally not implemented
+
+**Consequences:**
+- ✅ Integration working within 2 hours of pivot
+- ✅ Bidirectional sync functional
+- ⚠️ Users with Google SSO must set a TickTick password first
+- ⚠️ Less secure than OAuth for multi-user production app
+- 📝 Acceptable for single-user MVP; revisit for public launch
+
+---
+
+### INT-002: TickTick Client Safety Constraints
+
+**Context:** Direct Auth gives full account access. Need to prevent accidental data loss.
+
+**Decision:** TickTick client library explicitly limits write operations:
+
+**Allowed:**
+- `completeTask()` - Safe, reversible
+- `updateTaskDueDate()` - Safe, reversible
+
+**Blocked (not implemented):**
+- `createTask()` - Nice-to-have, may add later with explicit flag
+- `deleteTask()` - Dangerous, not implemented
+- `updateTaskTitle()` - Could cause data loss
+- `updateTaskContent()` - Could cause data loss
+- `createProject()`, `deleteProject()` - Structural changes
+- `moveTask()` - Could lose task context
+
+**Rationale:**
+- ADHD users may click impulsively
+- "Complete" and "reschedule" are the core workflows
+- Creating tasks can be done in TickTick directly
+- Deletion should never happen from a secondary app
+
+**Consequences:**
+- ✅ Safe by default
+- ✅ Covers 90% of use cases
+- ⚠️ "Create task" requested by user - will consider with confirmation dialog
+
+---
+
+### UI-001: Today/Week Toggle for Task View
+
+**Context:** PRD specifies "TODAY | THIS WEEK" toggle for Smart Task View.
+
+**Decision:** Implemented client-side toggle with two distinct views:
+
+**Today View:**
+- Simple list of tasks due today + overdue
+- Sorted by priority (high → low)
+- Full date picker on each task
+
+**Week View:**
+- Tasks grouped by day in timeline format
+- Visual indicators: dots, connecting lines
+- Day headers with smart labels ("Today", "Tomorrow", "Overdue", date)
+- Overdue section highlighted in red
+
+**Rationale:**
+- Today view = immediate focus, what needs attention NOW
+- Week view = planning perspective, see what's coming
+- Timeline format is ADHD-friendly: visual, scannable, shows time progression
+- Grouping reduces cognitive load vs flat list
+
+**Consequences:**
+- ✅ Matches PRD specification
+- ✅ ADHD-optimized visual design
+- ✅ Both views use same data (fetched once)
+- 📝 May add "overdue" as separate section at top of both views later
+
+---
+
+### DEPS-001: Downgrade react-day-picker for Tailwind v3
+
+**Context:** shadcn calendar component (react-day-picker v9) uses Tailwind v4 CSS syntax (`--spacing(8)`) which breaks with Tailwind v3.
+
+**Decision:** Downgraded to react-day-picker v8 + date-fns v3.
+
+```bash
+npm install react-day-picker@^8.10.1 date-fns@^3.6.0 --legacy-peer-deps
+```
+
+**Alternatives Considered:**
+1. Upgrade to Tailwind v4 - Too risky mid-project, breaking changes
+2. Use native `<input type="date">` - Uglier, inconsistent across browsers
+3. Downgrade react-day-picker - Chosen, known stable
+
+**Consequences:**
+- ✅ Calendar picker works
+- ✅ Matches design aesthetic
+- ⚠️ Using `--legacy-peer-deps` flag (date-fns version mismatch)
+- 📝 Can upgrade to Tailwind v4 + react-day-picker v9 post-MVP
+
+---
+
+*End of December 5, 2025 decisions*

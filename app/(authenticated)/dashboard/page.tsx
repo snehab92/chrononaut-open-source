@@ -1,5 +1,65 @@
 import { createClient } from "@/lib/supabase/server";
 import { Battery, Heart, Shield, Target, Compass } from "lucide-react";
+import { TaskList } from "@/components/dashboard/task-list";
+import { TickTickClient } from "@/lib/ticktick/client";
+
+async function getWeekTasks(supabase: any, userId: string) {
+  // Get TickTick token
+  const { data: tokenData } = await supabase
+    .from("integration_tokens")
+    .select("encrypted_access_token, encrypted_refresh_token")
+    .eq("user_id", userId)
+    .eq("provider", "ticktick")
+    .single();
+
+  if (!tokenData) {
+    return { connected: false, tasks: [] };
+  }
+
+  try {
+    const client = TickTickClient.fromToken(
+      tokenData.encrypted_access_token,
+      tokenData.encrypted_refresh_token
+    );
+
+    const allData = await client.getAllTasks();
+    
+    // Get week boundaries (include overdue + next 7 days)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const endOfWeek = new Date(today);
+    endOfWeek.setDate(endOfWeek.getDate() + 7);
+
+    // Filter for this week's tasks (due within 7 days or overdue)
+    const weekTasks = allData.syncTaskBean.update
+      .filter((task: any) => {
+        if (task.status === 2) return false; // Skip completed
+        if (!task.dueDate) return false;
+        const dueDate = new Date(task.dueDate);
+        return dueDate < endOfWeek; // Due this week or overdue
+      })
+      .map((task: any) => ({
+        id: task.id,
+        title: task.title,
+        projectId: task.projectId,
+        priority: task.priority || 0,
+        dueDate: task.dueDate,
+        isCompleted: task.status === 2,
+      }))
+      .sort((a: any, b: any) => {
+        // Sort by date first, then priority
+        const dateA = new Date(a.dueDate).getTime();
+        const dateB = new Date(b.dueDate).getTime();
+        if (dateA !== dateB) return dateA - dateB;
+        return b.priority - a.priority;
+      });
+
+    return { connected: true, tasks: weekTasks };
+  } catch (error) {
+    console.error("Failed to fetch tasks:", error);
+    return { connected: true, tasks: [] };
+  }
+}
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -15,6 +75,12 @@ export default async function DashboardPage() {
     .single();
 
   const firstName = profile?.full_name?.split(" ")[0];
+
+  // Fetch tasks (full week for toggle)
+  const { connected: tickTickConnected, tasks } = await getWeekTasks(
+    supabase,
+    user?.id || ""
+  );
 
   return (
     <div className="p-8 space-y-8 max-w-6xl mx-auto">
@@ -104,12 +170,15 @@ export default async function DashboardPage() {
         {/* Today's Tasks */}
         <div className="p-6 rounded-2xl bg-gradient-to-br from-white to-[#F5F0E6] border border-[#E8DCC4] shadow-sm">
           <div className="mb-4">
-            <h2 className="font-serif text-lg font-semibold text-[#1E3D32]">Today's Tasks</h2>
-            <p className="text-sm text-[#8B9A8F]">Connect TickTick to see tasks</p>
+            <h2 className="font-serif text-lg font-semibold text-[#1E3D32]">Tasks</h2>
+            <p className="text-sm text-[#8B9A8F]">
+              {tickTickConnected 
+                ? `${tasks.length} task${tasks.length !== 1 ? 's' : ''} this week`
+                : "Connect TickTick to see tasks"
+              }
+            </p>
           </div>
-          <div className="flex items-center justify-center h-32 text-[#8B9A8F] text-sm border-2 border-dashed border-[#E8DCC4] rounded-xl">
-            No tasks yet
-          </div>
+          <TaskList tasks={tasks} isConnected={tickTickConnected} />
         </div>
 
         {/* Calendar */}
