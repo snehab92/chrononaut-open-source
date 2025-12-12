@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Chrononaut Logo Generator</title>
+  <style>body { margin: 20px; font-family: sans-serif; }</style>
+</head>
+<body>
+<h3>Right-click the image below and "Save image as..." chrononaut_logo.png</h3>
+<canvas id="canvas" width="512" height="512"></canvas>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const cx = 256, cy = 256;
+
+// Background circle
+ctx.beginPath();
+ctx.arc(cx, cy, 240, 0, Math.PI * 2);
+ctx.fillStyle = '#1E3D32';
+ctx.fill();
+
+// Inner circle
+ctx.beginPath();
+ctx.arc(cx, cy, 180, 0, Math.PI * 2);
+ctx.fillStyle = '#2D5A47';
+ctx.fill();
+ctx.strokeStyle = '#C9A227';
+ctx.lineWidth = 4;
+ctx.stroke();
+
+// Compass points
+const drawTriangle = (angle, length, innerLen, color) => {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+  ctx.beginPath();
+  ctx.moveTo(0, -length);
+  ctx.lineTo(14, -innerLen);
+  ctx.lineTo(0, -innerLen + 20);
+  ctx.lineTo(-14, -innerLen);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.restore();
+};
+
+drawTriangle(0, 180, 56, '#C9A227');           // North (gold)
+drawTriangle(Math.PI, 180, 56, '#E8DCC4');    // South
+drawTriangle(Math.PI/2, 180, 56, '#E8DCC4');  // East
+drawTriangle(-Math.PI/2, 180, 56, '#E8DCC4'); // West
+
+// Clock hour hand
+ctx.beginPath();
+ctx.moveTo(cx, cy);
+ctx.lineTo(cx, cy - 116);
+ctx.strokeStyle = '#C9A227';
+ctx.lineWidth = 8;
+ctx.lineCap = 'round';
+ctx.stroke();
+
+// Clock minute hand
+ctx.beginPath();
+ctx.moveTo(cx, cy);
+ctx.lineTo(cx + 84, cy);
+ctx.strokeStyle = '#F5F0E6';
+ctx.lineWidth = 6;
+ctx.stroke();
+
+// Center circles
+ctx.beginPath();
+ctx.arc(cx, cy, 20, 0, Math.PI * 2);
+ctx.fillStyle = '#C9A227';
+ctx.fill();
+
+ctx.beginPath();
+ctx.arc(cx, cy, 10, 0, Math.PI * 2);
+ctx.fillStyle = '#1E3D32';
+ctx.fill();
+
+// Outer dashed ring
+ctx.beginPath();
+ctx.arc(cx, cy, 200, 0, Math.PI * 2);
+ctx.strokeStyle = '#C9A227';
+ctx.lineWidth = 2;
+ctx.setLineDash([8, 16]);
+ctx.stroke();
+</script>
+</body>
+</html>
