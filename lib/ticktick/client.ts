@@ -44,6 +44,7 @@ export interface TickTickTask {
   items?: TickTickChecklistItem[]; // Subtasks/checklist
   parentId?: string; // For subtasks
   columnId?: string; // Section ID
+  modifiedTime?: string; // ISO timestamp of last modification
 }
 
 export interface TickTickChecklistItem {
