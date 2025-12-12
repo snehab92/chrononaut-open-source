@@ -245,3 +245,210 @@ npm install react-day-picker@^8.10.1 date-fns@^3.6.0 --legacy-peer-deps
 ---
 
 *End of December 5, 2025 decisions*
+
+---
+
+## December 12, 2025
+
+### INT-003: Google Calendar Read-Only Integration
+
+**Context:** Need calendar awareness for meeting prep and time management without modifying user's calendar.
+
+**Decision:** Implement read-only Google Calendar sync with local-first storage.
+
+**Implementation:**
+- OAuth 2.0 with `calendar.readonly` scope only
+- 30-day event window (past and future)
+- Local storage in `calendar_events` table
+- 60-second polling + page focus sync
+
+**Rationale:**
+- Read-only is safer—no risk of accidentally modifying calendar
+- Local storage enables fast dashboard rendering
+- Pattern matches TickTick sync architecture
+
+**Consequences:**
+- ✅ Fast calendar display on dashboard
+- ✅ Meeting prep feature can link notes to events
+- ⚠️ Can't create/modify events (would need separate scope)
+- 📝 "Start Meeting Notes" button ready for notes screen
+
+---
+
+### INT-004: Whoop Data Model Design
+
+**Context:** Need to pull health data from Whoop for energy/wellness tracking.
+
+**Decision:** Two-table design: `health_metrics` (daily summary) + `workouts` (individual activities).
+
+**Rationale:**
+- Daily metrics (recovery, sleep, strain) are one-per-day
+- Workouts are many-per-day with detailed HR zone data
+- Meditation tracked as workout with `is_meditation` flag
+- Enables queries like "cardio minutes this week" and "meditation streak"
+
+**health_metrics columns:**
+```
+date, recovery_score, sleep_hours, sleep_consistency,
+strain_score, hrv_rmssd, resting_heart_rate, whoop_cycle_id
+```
+
+**workouts columns:**
+```
+whoop_id, activity_type, sport_id, started_at, ended_at,
+total_minutes, strain_score, avg/max_heart_rate, calories,
+zone_1-5_minutes, is_meditation, date
+```
+
+**Consequences:**
+- ✅ Granular workout data for pattern analysis
+- ✅ Meditation tracked separately from exercise
+- ✅ HR zones enable training load analysis
+- 📝 Sport ID 82 = meditation in Whoop's taxonomy
+
+---
+
+### INT-005: Skip Whoop Webhooks for MVP
+
+**Context:** Whoop offers webhooks for real-time data updates.
+
+**Decision:** Use daily polling instead of webhooks.
+
+**Rationale:**
+- Whoop data updates once per day (when you wake up)
+- Webhooks add complexity (public endpoint, signature verification, retries)
+- Not making real-time decisions based on Whoop data
+- Daily sync sufficient for pattern analysis
+
+**Consequences:**
+- ✅ Simpler implementation
+- ✅ Easier to debug
+- ⚠️ Data may be up to 24 hours stale
+- 📝 Can add webhooks later if fresher data needed
+
+---
+
+### SCHEMA-003: Idempotent Migrations Pattern
+
+**Context:** Migration version conflicts caused errors when files were renamed.
+
+**Decision:** All migrations must be idempotent (safe to re-run).
+
+**Pattern:**
+```sql
+-- Tables
+CREATE TABLE IF NOT EXISTS ...
+
+-- Columns
+ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS ...
+
+-- Policies (must drop first)
+DROP POLICY IF EXISTS "policy_name" ON table;
+CREATE POLICY "policy_name" ON table ...;
+
+-- Triggers (must drop first)
+DROP TRIGGER IF EXISTS trigger_name ON table;
+CREATE TRIGGER trigger_name ...;
+```
+
+**Rationale:**
+- Supabase tracks migrations by version number (filename prefix)
+- Renaming files or re-running migrations shouldn't fail
+- Production safety: can't accidentally break existing tables
+
+**Consequences:**
+- ✅ Migrations can be safely re-run
+- ✅ No more "already exists" errors
+- ✅ Cleaner CI/CD pipeline
+- ⚠️ Slightly more verbose SQL
+
+---
+
+### UI-002: Dashboard Metrics Panel Redesign
+
+**Context:** Original PRD specified abstract "Energy" metric (60% Whoop + 40% journal). User found this less actionable than concrete habit tracking.
+
+**Decision:** Replace Energy metric with goal-based Habits tracking + Well-being/Growth toggle.
+
+**New structure:**
+
+```
+┌─────────────────────────────────────────────────────┐
+│  [Well-being]  [Growth]     ← Segmented control     │
+├─────────────────────────────────────────────────────┤
+│  HABITS (This Week)                                 │
+│  • Sleep Streak - goal: 8hrs + ≥84% consistency     │
+│  • Exercise - goal: 2.5hrs Z1-3, 15min Z4-5         │
+│  • Meditation - goal: 1x daily                      │
+│                                                     │
+│  MOOD                                               │
+│  • 7 faces for Sun-Sat (gray if no journal)         │
+│                                                     │
+│  COMPASS                                            │
+│  • AI daily insight + "I commit to..." button      │
+├─────────────────────────────────────────────────────┤
+│  GROWTH (when toggled)                              │
+│  • Self-Compassion, Values, Executive, Strengths    │
+└─────────────────────────────────────────────────────┘
+```
+
+**Rationale:**
+- Concrete goals ("8 hours sleep") more actionable than abstract scores
+- Streaks provide gamification/accountability
+- Gray faces for missing journals create social pressure to complete
+- Goals displayed prominently on cards for reinforcement
+- Well-being vs Growth separates daily habits from periodic assessments
+
+**Data sources:**
+| Card | Source | Status |
+|------|--------|--------|
+| Sleep | `health_metrics` | ✅ Ready |
+| Exercise | `workouts` (zones) | ✅ Ready |
+| Meditation | `workouts` (is_meditation) | ✅ Ready |
+| Mood | `journal_entries.mood_label` | ⏳ Needs journal screen |
+| Compass | `ai_insights` | ⏳ Needs AI integration |
+| Assessments | `notes` (assessment type) | ⏳ Needs notes screen |
+
+**Consequences:**
+- ✅ More actionable dashboard
+- ✅ Clear accountability with visible goals
+- ✅ Gamification through streaks
+- ⚠️ Requires journal/notes screens for full functionality
+- 📝 Placeholder UI until dependent features built
+
+---
+
+### SCHEMA-004: daily_commitments Table
+
+**Context:** "I commit to..." button in Compass section needs to store user commitment for accountability tracking.
+
+**Decision:** Create `daily_commitments` table to track when user acknowledges daily AI insight.
+
+**Schema:**
+```sql
+daily_commitments (
+  id uuid primary key,
+  user_id uuid references profiles,
+  commitment_date date not null,
+  committed_at timestamp,
+  insight_id uuid references ai_insights,
+  unique(user_id, commitment_date)
+)
+```
+
+**Rationale:**
+- Enables future features: commitment streaks, accountability reports
+- Links to specific AI insight for context
+- One commitment per day per user
+
+**Consequences:**
+- ✅ Foundation for accountability tracking
+- ✅ Can analyze commitment patterns vs outcomes
+- 📝 V2 feature: commitment streak display
+
+---
+
+*End of December 12, 2025 decisions*

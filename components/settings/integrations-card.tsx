@@ -42,7 +42,7 @@ const INTEGRATIONS: Integration[] = [
   {
     id: "whoop",
     name: "Whoop",
-    description: "Import recovery, sleep, and strain data for energy tracking",
+    description: "Import recovery, sleep, strain, and workout data for energy tracking",
     icon: "💪",
     authType: "oauth",
   },
@@ -68,10 +68,14 @@ export function IntegrationsCard({ connectedProviders }: IntegrationsCardProps) 
     
     if (success === 'google_connected') {
       showMessage("success", "Google Calendar connected successfully!");
+    } else if (success === 'whoop_connected') {
+      showMessage("success", "Whoop connected successfully! Health data synced.");
     } else if (error === 'google_auth_failed') {
       showMessage("error", "Failed to connect Google Calendar. Please try again.");
+    } else if (error === 'whoop_auth_failed') {
+      showMessage("error", "Failed to connect Whoop. Please try again.");
     } else if (error === 'token_invalid') {
-      showMessage("error", "Google token validation failed. Please try again.");
+      showMessage("error", "Token validation failed. Please try again.");
     }
   }, [searchParams]);
 
@@ -84,9 +88,11 @@ export function IntegrationsCard({ connectedProviders }: IntegrationsCardProps) 
     if (integration.id === "ticktick") {
       setTickTickModalOpen(true);
     } else if (integration.id === "google_calendar") {
-      // Redirect to Google OAuth
       setConnecting("google_calendar");
       window.location.href = "/api/integrations/google/authorize";
+    } else if (integration.id === "whoop") {
+      setConnecting("whoop");
+      window.location.href = "/api/integrations/whoop/authorize";
     } else {
       showMessage("error", `${integration.name} integration coming soon!`);
     }
@@ -127,9 +133,12 @@ export function IntegrationsCard({ connectedProviders }: IntegrationsCardProps) 
   const handleDisconnect = async (providerId: string) => {
     try {
       // Map provider ID to API path
-      const apiPath = providerId === "google_calendar" 
-        ? "/api/integrations/google/disconnect"
-        : `/api/integrations/${providerId}/disconnect`;
+      let apiPath: string;
+      if (providerId === "google_calendar") {
+        apiPath = "/api/integrations/google/disconnect";
+      } else {
+        apiPath = `/api/integrations/${providerId}/disconnect`;
+      }
         
       const response = await fetch(apiPath, {
         method: "POST",
@@ -146,8 +155,8 @@ export function IntegrationsCard({ connectedProviders }: IntegrationsCardProps) 
     }
   };
 
-  // Check which integrations are available
-  const isAvailable = (id: string) => id === "ticktick" || id === "google_calendar";
+  // All integrations are now available
+  const isAvailable = (id: string) => ["ticktick", "google_calendar", "whoop"].includes(id);
 
   return (
     <>

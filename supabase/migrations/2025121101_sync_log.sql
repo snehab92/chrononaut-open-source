@@ -1,15 +1,14 @@
 -- ============================================
--- SYNC LOG TABLE
+-- SYNC LOG TABLE (idempotent)
 -- ============================================
 -- Tracks sync operations for debugging and monitoring
--- Helps diagnose sync issues and measure performance
 
-create table public.sync_log (
+create table if not exists public.sync_log (
   id uuid default gen_random_uuid() primary key,
   user_id uuid references public.profiles(id) on delete cascade not null,
   
   -- Sync metadata
-  provider text not null, -- 'ticktick', 'google_calendar', 'whoop'
+  provider text not null,
   direction text not null check (direction in ('pull', 'push', 'both')),
   trigger_type text not null check (trigger_type in ('manual', 'scheduled', 'page_focus', 'action', 'user_action', 'initial_connect')),
   
@@ -31,18 +30,20 @@ create table public.sync_log (
   created_at timestamp with time zone default now()
 );
 
--- Indexes
-create index idx_sync_log_user on public.sync_log(user_id);
-create index idx_sync_log_provider on public.sync_log(provider);
-create index idx_sync_log_created on public.sync_log(created_at desc);
+-- Indexes (if not exists)
+create index if not exists idx_sync_log_user on public.sync_log(user_id);
+create index if not exists idx_sync_log_provider on public.sync_log(provider);
+create index if not exists idx_sync_log_created on public.sync_log(created_at desc);
 
 -- RLS
 alter table public.sync_log enable row level security;
 
+drop policy if exists "Users can view own sync_log" on public.sync_log;
 create policy "Users can view own sync_log" 
   on public.sync_log for select 
   using (auth.uid() = user_id);
 
+drop policy if exists "Users can insert own sync_log" on public.sync_log;
 create policy "Users can insert own sync_log" 
   on public.sync_log for insert 
   with check (auth.uid() = user_id);

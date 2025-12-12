@@ -1,5 +1,4 @@
 import { createClient } from "@/lib/supabase/server";
-import { Battery, Heart, Shield, Target, Compass } from "lucide-react";
 import { DashboardClient } from "@/components/dashboard/dashboard-client";
 
 async function getInitialData(supabase: any, userId: string) {
@@ -12,6 +11,7 @@ async function getInitialData(supabase: any, userId: string) {
   const providers = new Set((integrations || []).map((i: any) => i.provider));
   const isTickTickConnected = providers.has("ticktick");
   const isGoogleCalendarConnected = providers.has("google_calendar");
+  const isWhoopConnected = providers.has("whoop");
 
   // Fetch tasks if TickTick connected
   let tasks: any[] = [];
@@ -73,11 +73,87 @@ async function getInitialData(supabase: any, userId: string) {
     }
   }
 
+  // Fetch health metrics if Whoop connected (last 14 days)
+  let healthMetrics: any[] = [];
+  if (isWhoopConnected) {
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+
+    const { data: metricsData, error } = await supabase
+      .from("health_metrics")
+      .select("*")
+      .eq("user_id", userId)
+      .gte("date", fourteenDaysAgo.toISOString().split('T')[0])
+      .order("date", { ascending: false });
+
+    if (!error && metricsData) {
+      healthMetrics = metricsData.map((m: any) => ({
+        date: m.date,
+        sleepHours: m.sleep_hours || 0,
+        sleepConsistency: m.sleep_consistency || 0,
+        recoveryScore: m.recovery_score || 0,
+        hrvRmssd: m.hrv_rmssd || 0,
+        restingHeartRate: m.resting_heart_rate || 0,
+      }));
+    }
+  }
+
+  // Fetch workouts if Whoop connected (last 14 days)
+  let workouts: any[] = [];
+  if (isWhoopConnected) {
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+
+    const { data: workoutData, error } = await supabase
+      .from("workouts")
+      .select("*")
+      .eq("user_id", userId)
+      .gte("date", fourteenDaysAgo.toISOString().split('T')[0])
+      .order("date", { ascending: false });
+
+    if (!error && workoutData) {
+      workouts = workoutData.map((w: any) => ({
+        date: w.date,
+        activityType: w.activity_type || 'Activity',
+        totalMinutes: w.total_minutes || 0,
+        isMeditation: w.is_meditation || false,
+        zone1Minutes: w.zone_1_minutes || 0,
+        zone2Minutes: w.zone_2_minutes || 0,
+        zone3Minutes: w.zone_3_minutes || 0,
+        zone4Minutes: w.zone_4_minutes || 0,
+        zone5Minutes: w.zone_5_minutes || 0,
+      }));
+    }
+  }
+
+  // Fetch journal entries for mood (last 14 days)
+  let journalEntries: any[] = [];
+  const fourteenDaysAgo = new Date();
+  fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+
+  const { data: journalData, error: journalError } = await supabase
+    .from("journal_entries")
+    .select("entry_date, mood_label")
+    .eq("user_id", userId)
+    .gte("entry_date", fourteenDaysAgo.toISOString().split('T')[0])
+    .order("entry_date", { ascending: false });
+
+  if (!journalError && journalData) {
+    journalEntries = journalData.map((j: any) => ({
+      date: j.entry_date,
+      moodLabel: j.mood_label,
+    }));
+  }
+
   return {
     isTickTickConnected,
     isGoogleCalendarConnected,
+    isWhoopConnected,
     tasks,
     events,
+    healthMetrics,
+    workouts,
+    journalEntries,
   };
 }
 
@@ -110,99 +186,36 @@ export default async function DashboardPage() {
   const {
     isTickTickConnected,
     isGoogleCalendarConnected,
+    isWhoopConnected,
     tasks: initialTasks,
     events: initialEvents,
+    healthMetrics,
+    workouts,
+    journalEntries,
   } = await getInitialData(supabase, user?.id || "");
 
   return (
     <div className="p-8 space-y-8 max-w-6xl mx-auto">
       {/* Header */}
       <div className="space-y-2">
-        <div className="flex items-center gap-2 text-[#8B9A8F] text-sm">
-          <Compass className="h-4 w-4" />
-          <span>Your voyage today</span>
-        </div>
         <h1 className="font-serif text-3xl font-semibold text-[#1E3D32] tracking-tight">
-          Welcome back{firstName ? `, ${firstName}` : ""}
+          Welcome aboard{firstName ? `, ${firstName}` : ""}
         </h1>
-        <p className="text-[#5C7A6B]">
-          Here's how you're navigating today.
+        <p className="text-[#5C7A6B] italic">
+          Latitude: here. Longitude: now.
         </p>
       </div>
 
-      {/* Analytics Grid - 2x2 */}
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        {/* Energy */}
-        <div className="group p-5 rounded-2xl bg-gradient-to-br from-white to-[#F5F0E6] border border-[#E8DCC4] shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-[#5C7A6B]">Energy</span>
-            <div className="p-2 rounded-xl bg-[#E8DCC4]/50 text-[#2D5A47] group-hover:bg-[#2D5A47] group-hover:text-[#E8DCC4] transition-colors">
-              <Battery className="h-4 w-4" />
-            </div>
-          </div>
-          <div className="space-y-1">
-            <div className="text-3xl font-serif font-semibold text-[#1E3D32]">--</div>
-            <p className="text-xs text-[#8B9A8F]">
-              Connect Whoop to track
-            </p>
-          </div>
-        </div>
-
-        {/* Mood */}
-        <div className="group p-5 rounded-2xl bg-gradient-to-br from-white to-[#F5F0E6] border border-[#E8DCC4] shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-[#5C7A6B]">Mood</span>
-            <div className="p-2 rounded-xl bg-[#E8DCC4]/50 text-[#D4A84B] group-hover:bg-[#D4A84B] group-hover:text-white transition-colors">
-              <Heart className="h-4 w-4" />
-            </div>
-          </div>
-          <div className="space-y-1">
-            <div className="text-3xl font-serif font-semibold text-[#1E3D32]">--</div>
-            <p className="text-xs text-[#8B9A8F]">
-              Journal to track
-            </p>
-          </div>
-        </div>
-
-        {/* Self-Compassion */}
-        <div className="group p-5 rounded-2xl bg-gradient-to-br from-white to-[#F5F0E6] border border-[#E8DCC4] shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-[#5C7A6B]">Self-Compassion</span>
-            <div className="p-2 rounded-xl bg-[#E8DCC4]/50 text-[#2D5A47] group-hover:bg-[#2D5A47] group-hover:text-[#E8DCC4] transition-colors">
-              <Shield className="h-4 w-4" />
-            </div>
-          </div>
-          <div className="space-y-1">
-            <div className="text-3xl font-serif font-semibold text-[#1E3D32]">--</div>
-            <p className="text-xs text-[#8B9A8F]">
-              Take assessment
-            </p>
-          </div>
-        </div>
-
-        {/* Values Alignment */}
-        <div className="group p-5 rounded-2xl bg-gradient-to-br from-white to-[#F5F0E6] border border-[#E8DCC4] shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium text-[#5C7A6B]">Values Alignment</span>
-            <div className="p-2 rounded-xl bg-[#E8DCC4]/50 text-[#D4A84B] group-hover:bg-[#D4A84B] group-hover:text-white transition-colors">
-              <Target className="h-4 w-4" />
-            </div>
-          </div>
-          <div className="space-y-1">
-            <div className="text-3xl font-serif font-semibold text-[#1E3D32]">--</div>
-            <p className="text-xs text-[#8B9A8F]">
-              Take assessment
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Tasks and Calendar - Client Component */}
+      {/* Dashboard Client (metrics + tasks + calendar) */}
       <DashboardClient 
         initialTasks={initialTasks}
         initialEvents={initialEvents}
         isTickTickConnected={isTickTickConnected}
         isGoogleCalendarConnected={isGoogleCalendarConnected}
+        isWhoopConnected={isWhoopConnected}
+        healthMetrics={healthMetrics}
+        workouts={workouts}
+        journalEntries={journalEntries}
       />
     </div>
   );

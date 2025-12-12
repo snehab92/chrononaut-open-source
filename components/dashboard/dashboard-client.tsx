@@ -5,13 +5,39 @@ import { CalendarProvider, CalendarEvent } from "./calendar-context";
 import { CombinedSyncStatus } from "./combined-sync-status";
 import { TaskList } from "./task-list";
 import { EventList } from "./event-list";
+import { MetricsPanel } from "./metrics-panel";
 import { useTaskContext } from "./task-context";
+import { useCalendarContext } from "./calendar-context";
 
 interface DashboardClientProps {
   initialTasks: Task[];
   initialEvents: CalendarEvent[];
   isTickTickConnected: boolean;
   isGoogleCalendarConnected: boolean;
+  isWhoopConnected: boolean;
+  healthMetrics: {
+    date: string;
+    sleepHours: number;
+    sleepConsistency: number;
+    recoveryScore: number;
+    hrvRmssd: number;
+    restingHeartRate: number;
+  }[];
+  workouts: {
+    date: string;
+    activityType: string;
+    totalMinutes: number;
+    isMeditation: boolean;
+    zone1Minutes: number;
+    zone2Minutes: number;
+    zone3Minutes: number;
+    zone4Minutes: number;
+    zone5Minutes: number;
+  }[];
+  journalEntries: {
+    date: string;
+    moodLabel: string;
+  }[];
 }
 
 export function DashboardClient({ 
@@ -19,13 +45,29 @@ export function DashboardClient({
   initialEvents,
   isTickTickConnected,
   isGoogleCalendarConnected,
+  isWhoopConnected,
+  healthMetrics,
+  workouts,
+  journalEntries,
 }: DashboardClientProps) {
   return (
     <TaskProvider initialTasks={initialTasks} isConnected={isTickTickConnected}>
       <CalendarProvider initialEvents={initialEvents} isConnected={isGoogleCalendarConnected}>
-        <CombinedSyncStatus />
+        {/* Metrics Panel */}
+        <MetricsPanel 
+          isWhoopConnected={isWhoopConnected}
+          healthMetrics={healthMetrics}
+          workouts={workouts}
+          journalEntries={journalEntries}
+        />
         
-        <div className="grid gap-5 lg:grid-cols-3">
+        {/* Sync Status */}
+        <div className="mt-6">
+          <CombinedSyncStatus />
+        </div>
+        
+        {/* Tasks and Calendar Grid */}
+        <div className="grid gap-5 lg:grid-cols-3 mt-2">
           {/* Today's Tasks */}
           <div className="p-6 rounded-2xl bg-gradient-to-br from-white to-[#F5F0E6] border border-[#E8DCC4] shadow-sm">
             <div className="mb-4">
@@ -76,8 +118,6 @@ function TaskCount({ isConnected }: { isConnected: boolean }) {
 }
 
 // Event count component  
-import { useCalendarContext } from "./calendar-context";
-
 function EventCount({ isConnected }: { isConnected: boolean }) {
   const { events } = useCalendarContext();
   

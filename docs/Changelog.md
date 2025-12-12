@@ -417,3 +417,215 @@ npm install react-day-picker@^8.10.1 date-fns@^3.6.0 --legacy-peer-deps
 ---
 
 *End of December 5, 2025 session*
+
+---
+
+## Session: December 12, 2025
+
+### Session Reference Info
+- **Date:** December 12, 2025
+- **Approximate Duration:** ~4 hours (ongoing)
+- **Week/Day:** Week 2-3
+- **Build Plan Goals:** Google Calendar Integration, Whoop Integration, Dashboard Metrics
+
+---
+
+### What I Set Out To Do
+
+1. Complete Google Calendar OAuth integration with read-only sync
+2. Build Whoop integration for health data (recovery, sleep, strain, workouts)
+3. Update dashboard metrics panel to match evolved requirements
+
+---
+
+### Change Log Summary
+
+| Category | Change | Files |
+|----------|--------|-------|
+| **Migration** | Calendar events table | `supabase/migrations/2025121102_calendar_events.sql` |
+| **Migration** | Sync log table | `supabase/migrations/2025121101_sync_log.sql` |
+| **Migration** | Workouts table + health_metrics updates | `supabase/migrations/2025121201_workouts_metrics.sql` |
+| **Library** | Google Calendar client (OAuth, token refresh, API) | `lib/google/calendar.ts` |
+| **Library** | Google Calendar sync engine | `lib/google/sync.ts` |
+| **Library** | Whoop client (OAuth, token refresh, API) | `lib/whoop/client.ts` |
+| **Library** | Whoop sync engine | `lib/whoop/sync.ts` |
+| **API** | Google Calendar OAuth routes | `app/api/integrations/google/{authorize,callback,sync,disconnect}/route.ts` |
+| **API** | Calendar events endpoint | `app/api/calendar/events/route.ts` |
+| **API** | Whoop OAuth routes | `app/api/integrations/whoop/{authorize,callback,sync,disconnect}/route.ts` |
+| **Hooks** | useGoogleCalendarSync hook | `lib/hooks/use-google-calendar-sync.ts` |
+| **UI** | Calendar context provider | `components/dashboard/calendar-context.tsx` |
+| **UI** | Event list with Today/Week views | `components/dashboard/event-list.tsx` |
+| **UI** | Combined sync status for TickTick + GCal | `components/dashboard/combined-sync-status.tsx` |
+| **UI** | Settings integrations card (added Whoop) | `components/settings/integrations-card.tsx` |
+| **UI** | Updated calendar component for react-day-picker v9 | `components/ui/calendar.tsx` |
+| **Deps** | Upgraded react-day-picker to v9.4.4 | `package.json` |
+| **Docs** | Privacy policy for Whoop OAuth | `docs/PRIVACY_POLICY.md` |
+| **Fix** | Added modifiedTime to TickTickTask interface | `lib/ticktick/client.ts` |
+
+---
+
+### Daily Summary
+
+#### 1. Completed Tasks Summary
+
+- ✅ Google Calendar OAuth integration complete
+- ✅ 7-day calendar view with Today/Week toggle
+- ✅ Expandable event modals with attendees, meeting links
+- ✅ Combined sync engine (TickTick + GCal, 60-second polling)
+- ✅ Whoop OAuth integration complete (awaiting sync test)
+- ✅ Workouts table for exercise/meditation tracking
+- ✅ Health metrics table updated with new columns
+- ✅ Privacy policy created for Whoop OAuth
+- ✅ All migrations made idempotent (IF NOT EXISTS pattern)
+
+---
+
+#### 2. Completed Tasks Drill-Down
+
+##### 2a. Google Calendar Integration (~1.5 hours)
+
+**What was built:**
+- OAuth 2.0 flow with Google Cloud Console setup
+- Read-only calendar sync (30-day window)
+- Local-first storage in `calendar_events` table
+- Event modals with: title, time, location, attendees, meeting link, "Start Meeting Notes" button
+
+**Sync pattern:**
+- Initial sync on OAuth callback
+- 60-second polling interval
+- Page focus triggers sync
+- Manual sync button
+
+**Week view UI:**
+- 7 columns (days), scrollable if >250px
+- Today highlighted with gold border and cream background
+- Mini event cards stacked vertically per day
+
+---
+
+##### 2b. Whoop Integration (~2 hours)
+
+**What was built:**
+- OAuth 2.0 flow with Whoop Developer Portal
+- Read scopes: recovery, cycles, sleep, workout, profile, body_measurement
+- Two tables:
+  - `health_metrics`: daily recovery, sleep hours, sleep consistency, strain, HRV, RHR
+  - `workouts`: individual activities with HR zones, meditation flag
+
+**Data captured:**
+
+| health_metrics | workouts |
+|----------------|----------|
+| recovery_score (0-100) | whoop_id |
+| sleep_hours | activity_type |
+| sleep_consistency (0-100) | total_minutes |
+| strain_score (0-21) | strain_score |
+| hrv_rmssd | zone_1-5_minutes |
+| resting_heart_rate | is_meditation |
+
+**Sport ID mapping:** 70+ activity types mapped (meditation = sport_id 82)
+
+---
+
+##### 2c. Migration Refactoring (~30 min)
+
+**Problem:** Supabase migration version conflicts after renaming files.
+
+**Solution:**
+1. Used `supabase migration repair --status reverted` for old versions
+2. Made all migrations idempotent:
+   - `CREATE TABLE IF NOT EXISTS`
+   - `CREATE INDEX IF NOT EXISTS`
+   - `DROP POLICY IF EXISTS` before `CREATE POLICY`
+   - `DROP TRIGGER IF EXISTS` before `CREATE TRIGGER`
+   - `ADD COLUMN IF NOT EXISTS` for schema updates
+
+**Key learning:** Always write idempotent migrations that can be safely re-run.
+
+---
+
+##### 2d. Dashboard Metrics Redesign (planning)
+
+**Evolution from PRD:**
+- Dropped generic "Energy" metric (Whoop recovery + journal energy blend)
+- Replaced with actionable Habits tracking against specific goals
+- Added Well-being/Growth toggle for different metric scopes
+
+**New structure:**
+
+```
+Well-being Scope:
+├── Habits Section (current week)
+│   ├── Sleep Streak (goal: 8hrs + 84% consistency)
+│   ├── Exercise (goal: 2.5hrs Z1-3, 15min Z4-5)
+│   └── Meditation Streak (goal: 1x daily)
+├── Mood Section
+│   └── Week mood faces (from journal, gray if missing)
+└── Compass Section
+    └── AI daily insight + "I commit to..." button
+
+Growth Scope:
+├── Self-Compassion assessment
+├── Values Alignment assessment
+├── Executive Skills assessment
+└── Strengths Profile assessment
+```
+
+---
+
+#### 3. Key Learnings
+
+##### Technical Learnings
+
+| Concept | What I Learned |
+|---------|----------------|
+| **react-day-picker v9** | Uses `Chevron` component instead of `IconLeft`/`IconRight` |
+| **Supabase migrations** | Version = numeric prefix of filename; must be unique |
+| **Migration repair** | `--status reverted` removes old versions from tracking |
+| **Idempotent SQL** | Essential for migrations that might be re-run |
+| **Whoop API** | Uses `limit` param, not date filters for pagination |
+| **TypeScript objects** | Negative number keys need brackets: `{[-1]: 'value'}` |
+
+##### ADHD-Specific Observations
+
+- **Metrics evolution is good** — Moving from abstract "Energy" to concrete "Sleep Streak" is more actionable
+- **Goals on cards** — Visual accountability reinforcement requested
+- **Gray faces for missing journals** — Gamification to avoid skipping entries
+
+---
+
+#### 4. Pending Items
+
+| Item | Priority | Notes |
+|------|----------|-------|
+| Test Whoop sync | High | OAuth works, sync returned 400 error - need to debug |
+| Build metrics panel UI | High | Well-being/Growth toggle + Habits cards |
+| daily_commitments table | Medium | For "I commit to..." tracking |
+| Expanded modals for habit cards | Medium | Trend lines, HRV, sleep efficiency |
+| Compass AI integration | Low | Requires AI pattern analyst setup |
+
+---
+
+#### 5. Final System State
+
+**Working:**
+- ✅ Google Calendar OAuth + sync
+- ✅ Calendar week view with event modals
+- ✅ Combined sync status (TickTick + GCal)
+- ✅ Whoop OAuth flow
+- ✅ Workouts + health_metrics tables created
+- ✅ Settings page shows all 3 integrations
+
+**In Progress:**
+- 🔄 Whoop data sync (400 error, needs debugging)
+- 🔄 Dashboard metrics panel redesign
+
+**Next Steps:**
+1. Fix Whoop sync (remove date filters, test again)
+2. Build metrics panel with Well-being/Growth toggle
+3. Implement Habits cards with goals display
+4. Add expanded modals with trend data
+
+---
+
+*End of December 12, 2025 session (ongoing)*

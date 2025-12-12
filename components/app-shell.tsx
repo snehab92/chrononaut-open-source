@@ -70,14 +70,27 @@ export function AppShell({ children, user }: AppShellProps) {
           <Compass className="h-5 w-5 text-[#E8DCC4]" />
         </div>
         {(!collapsed || mobile) && (
-          <div className="flex flex-col">
+          <div className="flex flex-col flex-1">
             <span className="font-serif font-semibold text-lg tracking-tight text-[#1E3D32]">
               Chrononaut
             </span>
             <span className="text-[10px] text-[#5C7A6B] tracking-widest uppercase">
-              Master your time
+              The tides of time await
             </span>
           </div>
+        )}
+        {/* Collapse button in header (desktop only) */}
+        {!mobile && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setCollapsed(!collapsed)}
+            className="h-8 w-8 p-0 text-[#5C7A6B] hover:text-[#2D5A47] hover:bg-[#E8DCC4]/50"
+          >
+            <ChevronLeft
+              className={cn("h-4 w-4 transition-transform duration-300", collapsed && "rotate-180")}
+            />
+          </Button>
         )}
       </div>
 
@@ -243,21 +256,6 @@ export function AppShell({ children, user }: AppShellProps) {
           </Tooltip>
         </TooltipProvider>
       </div>
-
-      {/* Collapse button (desktop only) */}
-      {!mobile && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setCollapsed(!collapsed)}
-          className="mt-4 w-full text-[#5C7A6B] hover:text-[#2D5A47] hover:bg-[#E8DCC4]/50"
-        >
-          <ChevronLeft
-            className={cn("h-4 w-4 transition-transform duration-300", collapsed && "rotate-180")}
-          />
-          {!collapsed && <span className="ml-2">Collapse</span>}
-        </Button>
-      )}
     </div>
   );
 
