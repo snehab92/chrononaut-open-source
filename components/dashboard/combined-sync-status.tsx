@@ -26,7 +26,7 @@ export function CombinedSyncStatus() {
   // Combined sync function
   const syncAll = useCallback(async (trigger: string = "manual") => {
     const results = await Promise.allSettled([
-      ticktick.isConnected ? ticktick.manualSync(trigger) : Promise.resolve(null),
+      ticktick.isConnected ? ticktick.manualSync() : Promise.resolve(null),
       gcal.isConnected ? gcal.manualSync(trigger) : Promise.resolve(null),
     ]);
     
