@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { TickTickClient } from '@/lib/ticktick/client';
+import { pullTasksFromTickTick } from '@/lib/ticktick/sync';
 
 /**
  * Direct login endpoint for TickTick
@@ -10,6 +11,8 @@ import { TickTickClient } from '@/lib/ticktick/client';
  * 
  * This uses direct username/password authentication instead of OAuth.
  * Credentials are NOT stored - only the session token is saved.
+ * 
+ * After successful login, triggers initial sync to populate local database.
  */
 export async function POST(request: NextRequest) {
   // Check if user is authenticated with Chrononaut
@@ -33,7 +36,7 @@ export async function POST(request: NextRequest) {
     console.log('Attempting TickTick direct login for user:', user.id);
 
     // Attempt login
-    const { token, inboxId } = await TickTickClient.login(username, password);
+    const { client, token, inboxId } = await TickTickClient.login(username, password);
 
     console.log('TickTick login successful, storing token...');
 
@@ -63,15 +66,25 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate the token works by fetching projects
-    const client = TickTickClient.fromToken(token, inboxId);
     const projects = await client.getProjects();
-
     console.log(`TickTick connected! Found ${projects.length} projects.`);
+
+    // Trigger initial sync to populate local database
+    console.log('Starting initial task sync...');
+    const syncResult = await pullTasksFromTickTick(user.id, client, 'initial_connect');
+    console.log('Initial sync complete:', {
+      pulled: syncResult.pulled,
+      errors: syncResult.errors.length,
+    });
 
     return NextResponse.json({
       success: true,
       message: 'TickTick connected successfully',
-      projectCount: projects.length
+      projectCount: projects.length,
+      initialSync: {
+        tasksPulled: syncResult.pulled,
+        success: syncResult.success,
+      },
     });
 
   } catch (err) {

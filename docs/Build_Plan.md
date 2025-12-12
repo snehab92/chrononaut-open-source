@@ -81,7 +81,9 @@ npx supabase migration new initial_schema
 - time_blocks, tasks
 - journal_entries (with mood_label, energy_rating, override flags)
 - health_metrics, meeting_notes
-- ai_insights, cue_rules, cue_instances
+- ai_insights (with source_type, source_conversation_id for chat memories)
+- ai_conversations, ai_messages (for persistent chat)
+- cue_rules, cue_instances
 - integration_tokens, audit_log
 
 ```
@@ -113,7 +115,7 @@ Next.js app shell with:
 ```
 
 **Deliverables:**
-- [ ] 12 tables created with RLS
+- [ ] 14 tables created with RLS (including ai_conversations, ai_messages)
 - [ ] Auth flow working
 - [ ] App shell with navigation
 - [ ] Global action menu functional
@@ -146,8 +148,6 @@ Bidirectional TickTick sync:
 
 ### Day 5: Smart Task View
 
-**v0 prompt:**
-
 ```
 Task list with Today/Week toggle, priority dots, time estimates, drag-to-reorder. Empty state for no tasks or disconnected.
 ```
@@ -160,37 +160,42 @@ Task list with Today/Week toggle, priority dots, time estimates, drag-to-reorder
 
 ---
 
-### Week 3: Notes Screen + Focus Foundation
+### Week 3: Notes Screen and Focus Screen
 
-**Goal:** Notes CRUD with assessments, Focus shell
 
 ### Day 1-3: Notes Screen
 
-**v0 prompt:**
-
-```
+ **Goal:** easy to navigate notebook view of all non-journal notes database - CRUD functionality with the filter/sort ux specified in the PRD. 
 Master-detail notes:
-- Left: search, filter chips (Meeting/Document/Spec/Research/Assessment), note list
+*Left navigation panel is much thinner than the right panel. Entire left panel can be collapsed*
+- Left: keyword search, filter chips (as per PRD)
+- Left: import/export buttons. Import in markdown, docx or PDF formats -> create a note page from the import. Export in markdown, docx or PDF formats. Markdown is the default for import and export.
+- Left: "about me" files - a.k.a "project files" in Claude AI. In this section, I am able to select (and view) files from my notes db to include in "about me" files for the embedded AI-agents to utilize. I can organize the files into "about me" folders - e.g., "assessments", "360 feedback', "writing that inspired me", etc.
+-Left: notes database organized by folders and sections. UI inspiration: Notion, Obsidian.
+*Right panel is much wider. It is the pop out of the selected note*
 - Right: rich editor, title, type dropdown, tags
-- Assessment type shows structured template based on assessment_type
+- Templates by note type auto-applied 
 - Autosave, 10s undo on delete
+- Access chatbot (bottom bar that can be minimized)
+- Ability to paste chatbot content into open note
+- Export to markdown 
 ```
-
-**Assessment Templates:**
-- Self-Compassion: 5 questions × 1-10, auto-total, reflection
-- Values Alignment: 3 values × 0-100%, evidence per value, auto-average
 
 ### Day 4-5: Focus Screen Shell
-
-**v0 prompt:**
 
 ```
 Full-screen focus mode:
 - Header: time, mode selector (Admin/Research/Writing/Meeting Prep/Toastmasters), exit
+--- Two modes to timer: focus timer (total amount of time focusing so far), task timer (total amount of time on task so far) - default is on task timer mode - can toggle back and forth
+--- Task timer mode displays the AI-pattern analyzer task time estimation 
 - Center: task title, large timer
 - Controls: Pause, Complete, Switch, End
 - Task drawer from right
-- Collapsible AI chat panel (right)
+--- Task cards display AI-pattern analyzer data: task time estimation, suggested prioritization (when to do it)
+- "Get task started" collapsible section at top of writing area with AI button -> clicking button populates section with the key "get going" items for that task. This AI response is rooted in how long it should take me, how long similar tasks in the past have taken me, energy level/state aligned with the task, suggested framework to complete, cognitive bias check, interruptions/cues that I want to set etc.
+- "Turn on focus cues" allows me to turn on/off the AI-driven pop-up cues that keep me focused on the task at hand. This is CRUCIAL to ensuring focus sessions are meaningful. The cues should be informed by current session tracking data - how many times I click out of the focus screen, how long I'm taking on different parts of the task, etc. to keep me locked in and executing. I want to gamify my attention to fight functional freeze, attention fragmentation and perfectionism.
+- Access chatbot (bottom bar that can be minimized)
+- Ability to paste chatbot content into open note
 ```
 
 **Deliverables:**
@@ -290,16 +295,101 @@ Entry: {entry_text}
 Respond with only the mood label.
 ```
 
-### Day 5: AI Chat Drawer
+### Day 5: AI Chat Drawer + Persistence
+
+**Database tables to add:**
+```sql
+-- Add to Week 1 migration or create new migration
+create table ai_conversations (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references profiles(id) not null,
+  title text,
+  context_type text not null check (context_type in ('focus_session', 'journal_reflection', 'meeting_prep', 'general')),
+  linked_note_id uuid references notes(id),
+  linked_journal_id uuid references journal_entries(id),
+  linked_meeting_id uuid references meeting_notes(id),
+  agent_type text not null,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table ai_messages (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id uuid references ai_conversations(id) on delete cascade not null,
+  role text not null check (role in ('user', 'assistant')),
+  content text not null,
+  saved_to_memory boolean default false,
+  pushed_to_note_id uuid references notes(id),
+  created_at timestamptz default now()
+);
+
+-- Update ai_insights to track chat-sourced memories
+alter table ai_insights add column source_type text default 'pattern_analysis';
+alter table ai_insights add column source_conversation_id uuid references ai_conversations(id);
+alter table ai_insights add column extracted_text text;
+
+-- Indexes
+create index idx_ai_conversations_user on ai_conversations(user_id);
+create index idx_ai_messages_conversation on ai_messages(conversation_id);
+create index idx_ai_insights_source on ai_insights(source_type);
+```
 
 **v0 prompt:**
 
 ```
 Slide-over chat drawer (40% width):
+- Header: "New Chat" button, conversation search, close button
+- Conversation list (collapsible sidebar within drawer): grouped by date, shows title + context badge
 - Message list with user/assistant bubbles
+- Each assistant message has hover actions: "Save to Memory", "Push to Note", "Create Task"
 - Streaming indicator
-- Context badge showing active agent
+- Context badge showing: active agent + linked entity (note/journal/meeting)
 - Cmd+/ toggle from anywhere
+- "Push to Note" opens note selector modal
+- "Save to Memory" shows confirmation toast
+```
+
+**Context assembly function:**
+```tsx
+// lib/ai/context.ts
+export async function assembleContext(userId: string, conversationId: string) {
+  const [recentMessages, relevantMemories, structuredData, activeContext] = await Promise.all([
+    // Last 10 messages in current conversation
+    getRecentMessages(conversationId, 10),
+    // Semantic search of ai_insights for relevant memories
+    searchMemories(userId, currentQuery),
+    // Journals, assessments, health from last 7 days
+    getStructuredContext(userId),
+    // Current note/task/meeting if linked
+    getActiveScreenContext(conversationId)
+  ]);
+  
+  return buildContextPrompt({ recentMessages, relevantMemories, structuredData, activeContext });
+}
+```
+
+**Memory extraction function:**
+```tsx
+// lib/ai/memory.ts
+export async function saveToMemory(messageId: string) {
+  const message = await getMessage(messageId);
+  
+  // Pattern Analyst extracts key insight
+  const extraction = await patternAnalyst.extract({
+    prompt: `Extract the key fact, preference, or decision from this AI response. 
+             Summarize in 1-2 sentences. Classify as: user_preference | decision | pattern | fact
+             Response: ${message.content}`
+  });
+  
+  await createInsight({
+    user_id: message.user_id,
+    insight_type: extraction.type,
+    content: extraction.summary,
+    source_type: 'chat',
+    source_conversation_id: message.conversation_id,
+    extracted_text: message.content.substring(0, 500)
+  });
+}
 ```
 
 **Deliverables:**
@@ -309,6 +399,12 @@ Slide-over chat drawer (40% width):
 - [ ] Pattern analysis cron running
 - [ ] Mood classification working
 - [ ] Chat drawer functional
+- [ ] ai_conversations + ai_messages tables created
+- [ ] Chat persistence working (conversations saved)
+- [ ] "Save to Memory" extracts insight to ai_insights
+- [ ] "Push to Note" appends to selected note
+- [ ] Conversation history browsable
+- [ ] Context assembly includes relevant memories
 
 ---
 

@@ -47,13 +47,45 @@ export async function POST(request: NextRequest) {
       tokenData.encrypted_refresh_token
     );
 
+    // 1. Complete in TickTick
     await client.completeTask(projectId, taskId);
+
+    // 2. Update local database (if task exists)
+    const now = new Date().toISOString();
+    const { error: updateError } = await supabase
+      .from("tasks")
+      .update({
+        completed: true,
+        completed_at: now,
+        sync_status: 'synced',
+        last_synced_at: now,
+        updated_at: now,
+      })
+      .eq("user_id", user.id)
+      .eq("ticktick_id", taskId);
+
+    if (updateError) {
+      console.warn("Task not in local DB, but completed in TickTick:", taskId);
+      // Not a failure - task might not be synced to local yet
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Failed to complete task:", error);
+    
+    // Mark task as pending_push if TickTick failed but we want to retry
+    await supabase
+      .from("tasks")
+      .update({
+        completed: true,
+        completed_at: new Date().toISOString(),
+        sync_status: 'pending_push',
+      })
+      .eq("user_id", user.id)
+      .eq("ticktick_id", taskId);
+
     return NextResponse.json(
-      { error: "Failed to complete task" },
+      { error: "Failed to complete task in TickTick, marked for retry" },
       { status: 500 }
     );
   }

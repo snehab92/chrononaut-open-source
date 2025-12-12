@@ -1,63 +1,93 @@
 import { createClient } from "@/lib/supabase/server";
 import { Battery, Heart, Shield, Target, Compass } from "lucide-react";
-import { TaskList } from "@/components/dashboard/task-list";
-import { TickTickClient } from "@/lib/ticktick/client";
+import { DashboardClient } from "@/components/dashboard/dashboard-client";
 
-async function getWeekTasks(supabase: any, userId: string) {
-  // Get TickTick token
-  const { data: tokenData } = await supabase
+async function getInitialData(supabase: any, userId: string) {
+  // Check integration connections
+  const { data: integrations } = await supabase
     .from("integration_tokens")
-    .select("encrypted_access_token, encrypted_refresh_token")
-    .eq("user_id", userId)
-    .eq("provider", "ticktick")
-    .single();
+    .select("provider")
+    .eq("user_id", userId);
 
-  if (!tokenData) {
-    return { connected: false, tasks: [] };
+  const providers = new Set((integrations || []).map((i: any) => i.provider));
+  const isTickTickConnected = providers.has("ticktick");
+  const isGoogleCalendarConnected = providers.has("google_calendar");
+
+  // Fetch tasks if TickTick connected
+  let tasks: any[] = [];
+  if (isTickTickConnected) {
+    const { data: taskData, error } = await supabase
+      .from("tasks")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("completed", false)
+      .order("due_date", { ascending: true, nullsFirst: false });
+
+    if (!error && taskData) {
+      tasks = taskData.map((task: any) => ({
+        id: task.ticktick_id || task.id,
+        localId: task.id,
+        title: task.title,
+        projectId: task.ticktick_list_id,
+        priority: mapLocalPriority(task.priority),
+        dueDate: task.due_date,
+        isCompleted: task.completed,
+        syncStatus: task.sync_status,
+      }));
+    }
   }
 
-  try {
-    const client = TickTickClient.fromToken(
-      tokenData.encrypted_access_token,
-      tokenData.encrypted_refresh_token
-    );
+  // Fetch events if Google Calendar connected
+  let events: any[] = [];
+  if (isGoogleCalendarConnected) {
+    const now = new Date();
+    const thirtyDaysFromNow = new Date(now);
+    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
-    const allData = await client.getAllTasks();
-    
-    // Get week boundaries (include overdue + next 7 days)
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const endOfWeek = new Date(today);
-    endOfWeek.setDate(endOfWeek.getDate() + 7);
+    const { data: eventData, error } = await supabase
+      .from("calendar_events")
+      .select("*")
+      .eq("user_id", userId)
+      .gte("start_time", now.toISOString())
+      .lte("start_time", thirtyDaysFromNow.toISOString())
+      .neq("status", "cancelled")
+      .order("start_time", { ascending: true });
 
-    // Filter for this week's tasks (due within 7 days or overdue)
-    const weekTasks = allData.syncTaskBean.update
-      .filter((task: any) => {
-        if (task.status === 2) return false; // Skip completed
-        if (!task.dueDate) return false;
-        const dueDate = new Date(task.dueDate);
-        return dueDate < endOfWeek; // Due this week or overdue
-      })
-      .map((task: any) => ({
-        id: task.id,
-        title: task.title,
-        projectId: task.projectId,
-        priority: task.priority || 0,
-        dueDate: task.dueDate,
-        isCompleted: task.status === 2,
-      }))
-      .sort((a: any, b: any) => {
-        // Sort by date first, then priority
-        const dateA = new Date(a.dueDate).getTime();
-        const dateB = new Date(b.dueDate).getTime();
-        if (dateA !== dateB) return dateA - dateB;
-        return b.priority - a.priority;
-      });
+    if (!error && eventData) {
+      events = eventData.map((event: any) => ({
+        id: event.id,
+        googleEventId: event.google_event_id,
+        title: event.title,
+        description: event.description,
+        location: event.location,
+        startTime: event.start_time,
+        endTime: event.end_time,
+        allDay: event.all_day,
+        attendees: typeof event.attendees === "string"
+          ? JSON.parse(event.attendees)
+          : event.attendees || [],
+        organizerEmail: event.organizer_email,
+        status: event.status,
+        meetingLink: event.meeting_link,
+      }));
+    }
+  }
 
-    return { connected: true, tasks: weekTasks };
-  } catch (error) {
-    console.error("Failed to fetch tasks:", error);
-    return { connected: true, tasks: [] };
+  return {
+    isTickTickConnected,
+    isGoogleCalendarConnected,
+    tasks,
+    events,
+  };
+}
+
+// Map local priority (0-4) back to TickTick format (0,1,3,5) for UI consistency
+function mapLocalPriority(localPriority: number): number {
+  switch (localPriority) {
+    case 3: return 5; // high
+    case 2: return 3; // medium
+    case 1: return 1; // low
+    default: return 0; // none
   }
 }
 
@@ -76,11 +106,13 @@ export default async function DashboardPage() {
 
   const firstName = profile?.full_name?.split(" ")[0];
 
-  // Fetch tasks (full week for toggle)
-  const { connected: tickTickConnected, tasks } = await getWeekTasks(
-    supabase,
-    user?.id || ""
-  );
+  // Fetch initial data server-side
+  const {
+    isTickTickConnected,
+    isGoogleCalendarConnected,
+    tasks: initialTasks,
+    events: initialEvents,
+  } = await getInitialData(supabase, user?.id || "");
 
   return (
     <div className="p-8 space-y-8 max-w-6xl mx-auto">
@@ -165,33 +197,13 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Tasks and Calendar */}
-      <div className="grid gap-5 lg:grid-cols-3">
-        {/* Today's Tasks */}
-        <div className="p-6 rounded-2xl bg-gradient-to-br from-white to-[#F5F0E6] border border-[#E8DCC4] shadow-sm">
-          <div className="mb-4">
-            <h2 className="font-serif text-lg font-semibold text-[#1E3D32]">Tasks</h2>
-            <p className="text-sm text-[#8B9A8F]">
-              {tickTickConnected 
-                ? `${tasks.length} task${tasks.length !== 1 ? 's' : ''} this week`
-                : "Connect TickTick to see tasks"
-              }
-            </p>
-          </div>
-          <TaskList tasks={tasks} isConnected={tickTickConnected} />
-        </div>
-
-        {/* Calendar */}
-        <div className="lg:col-span-2 p-6 rounded-2xl bg-gradient-to-br from-white to-[#F5F0E6] border border-[#E8DCC4] shadow-sm">
-          <div className="mb-4">
-            <h2 className="font-serif text-lg font-semibold text-[#1E3D32]">Calendar</h2>
-            <p className="text-sm text-[#8B9A8F]">Connect Google Calendar to see events</p>
-          </div>
-          <div className="flex items-center justify-center h-32 text-[#8B9A8F] text-sm border-2 border-dashed border-[#E8DCC4] rounded-xl">
-            No events today
-          </div>
-        </div>
-      </div>
+      {/* Tasks and Calendar - Client Component */}
+      <DashboardClient 
+        initialTasks={initialTasks}
+        initialEvents={initialEvents}
+        isTickTickConnected={isTickTickConnected}
+        isGoogleCalendarConnected={isGoogleCalendarConnected}
+      />
     </div>
   );
 }

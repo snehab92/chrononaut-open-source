@@ -13,7 +13,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { CheckCircle2, Link2, Loader2, AlertCircle } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 
 interface Integration {
   id: string;
@@ -29,21 +30,21 @@ const INTEGRATIONS: Integration[] = [
     name: "TickTick",
     description: "Sync tasks bidirectionally for smart task management",
     icon: "✓",
-    authType: "direct", // Changed from OAuth
-  },
-  {
-    id: "whoop",
-    name: "Whoop",
-    description: "Import recovery, sleep, and strain data for energy tracking",
-    icon: "💪",
-    authType: "oauth", // Week 4
+    authType: "direct",
   },
   {
     id: "google_calendar",
     name: "Google Calendar",
     description: "Mirror your calendar for meeting prep and time awareness",
     icon: "📅",
-    authType: "oauth", // Week 9
+    authType: "oauth",
+  },
+  {
+    id: "whoop",
+    name: "Whoop",
+    description: "Import recovery, sleep, and strain data for energy tracking",
+    icon: "💪",
+    authType: "oauth",
   },
 ];
 
@@ -52,12 +53,27 @@ interface IntegrationsCardProps {
 }
 
 export function IntegrationsCard({ connectedProviders }: IntegrationsCardProps) {
+  const searchParams = useSearchParams();
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [connecting, setConnecting] = useState<string | null>(null);
   
   // TickTick login modal state
   const [tickTickModalOpen, setTickTickModalOpen] = useState(false);
   const [tickTickCredentials, setTickTickCredentials] = useState({ username: "", password: "" });
+
+  // Handle OAuth callback messages
+  useEffect(() => {
+    const success = searchParams.get('success');
+    const error = searchParams.get('error');
+    
+    if (success === 'google_connected') {
+      showMessage("success", "Google Calendar connected successfully!");
+    } else if (error === 'google_auth_failed') {
+      showMessage("error", "Failed to connect Google Calendar. Please try again.");
+    } else if (error === 'token_invalid') {
+      showMessage("error", "Google token validation failed. Please try again.");
+    }
+  }, [searchParams]);
 
   const showMessage = (type: "success" | "error", text: string) => {
     setMessage({ type, text });
@@ -67,8 +83,11 @@ export function IntegrationsCard({ connectedProviders }: IntegrationsCardProps) 
   const handleConnect = (integration: Integration) => {
     if (integration.id === "ticktick") {
       setTickTickModalOpen(true);
+    } else if (integration.id === "google_calendar") {
+      // Redirect to Google OAuth
+      setConnecting("google_calendar");
+      window.location.href = "/api/integrations/google/authorize";
     } else {
-      // Future OAuth integrations
       showMessage("error", `${integration.name} integration coming soon!`);
     }
   };
@@ -94,7 +113,6 @@ export function IntegrationsCard({ connectedProviders }: IntegrationsCardProps) 
         showMessage("success", `TickTick connected! Found ${data.projectCount} projects.`);
         setTickTickModalOpen(false);
         setTickTickCredentials({ username: "", password: "" });
-        // Refresh page to update connected status
         window.location.reload();
       } else {
         showMessage("error", data.error || "Failed to connect to TickTick.");
@@ -108,7 +126,12 @@ export function IntegrationsCard({ connectedProviders }: IntegrationsCardProps) 
 
   const handleDisconnect = async (providerId: string) => {
     try {
-      const response = await fetch(`/api/integrations/${providerId}/disconnect`, {
+      // Map provider ID to API path
+      const apiPath = providerId === "google_calendar" 
+        ? "/api/integrations/google/disconnect"
+        : `/api/integrations/${providerId}/disconnect`;
+        
+      const response = await fetch(apiPath, {
         method: "POST",
       });
 
@@ -122,6 +145,9 @@ export function IntegrationsCard({ connectedProviders }: IntegrationsCardProps) 
       showMessage("error", "Failed to disconnect. Please try again.");
     }
   };
+
+  // Check which integrations are available
+  const isAvailable = (id: string) => id === "ticktick" || id === "google_calendar";
 
   return (
     <>
@@ -158,7 +184,7 @@ export function IntegrationsCard({ connectedProviders }: IntegrationsCardProps) 
           {INTEGRATIONS.map((integration) => {
             const isConnected = connectedProviders.has(integration.id);
             const connectedAt = connectedProviders.get(integration.id);
-            const isAvailable = integration.id === "ticktick"; // Only TickTick ready for now
+            const available = isAvailable(integration.id);
 
             return (
               <div
@@ -192,7 +218,7 @@ export function IntegrationsCard({ connectedProviders }: IntegrationsCardProps) 
                         Disconnect
                       </Button>
                     </div>
-                  ) : isAvailable ? (
+                  ) : available ? (
                     <Button
                       onClick={() => handleConnect(integration)}
                       disabled={connecting === integration.id}

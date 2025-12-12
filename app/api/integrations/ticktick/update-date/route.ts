@@ -54,15 +54,43 @@ export async function POST(request: NextRequest) {
 
     console.log('Updating task due date:', { taskId, projectId, formattedDate });
     
-    const result = await client.updateTaskDueDate(taskId, projectId, formattedDate, true);
-    
-    console.log('TickTick response:', result);
+    // 1. Update in TickTick
+    await client.updateTaskDueDate(taskId, projectId, formattedDate, true);
+
+    // 2. Update local database
+    const now = new Date().toISOString();
+    const { error: updateError } = await supabase
+      .from("tasks")
+      .update({
+        due_date: dueDate || null,
+        sync_status: 'synced',
+        last_synced_at: now,
+        updated_at: now,
+      })
+      .eq("user_id", user.id)
+      .eq("ticktick_id", taskId);
+
+    if (updateError) {
+      console.warn("Task not in local DB, but updated in TickTick:", taskId);
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Failed to update task due date:", error);
+    
+    // Mark task as pending_push if TickTick failed
+    await supabase
+      .from("tasks")
+      .update({
+        due_date: dueDate || null,
+        sync_status: 'pending_push',
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", user.id)
+      .eq("ticktick_id", taskId);
+
     return NextResponse.json(
-      { error: "Failed to update due date" },
+      { error: "Failed to update in TickTick, marked for retry" },
       { status: 500 }
     );
   }

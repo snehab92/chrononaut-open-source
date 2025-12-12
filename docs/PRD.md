@@ -394,6 +394,49 @@ valuesAlignment = assessmentPct * mentionRatio
 
 **Security Note:** AI providers see plaintext during processing (required for analysis). Uses providers with no-training policies. Data encrypted in transit (TLS 1.3).
 
+### 4.3.6 AI Chat Persistence & Memory
+
+**Purpose:** Unified AI experience across all screens with persistent context and Notion AI-style interactions.
+
+**Chat Storage:**
+- All AI conversations stored in `ai_conversations` table
+- Messages include context_type (focus_session, journal_reflection, meeting_prep, general)
+- Optional linking to notes, journal entries, or meetings
+
+**Context Assembly:**
+Each AI call assembles relevant context from:
+1. Recent chat history (last 10 messages in current conversation)
+2. Relevant prior conversations (semantic search)
+3. Structured data (journals, assessments, health metrics)
+4. Active screen context (current note, task, meeting)
+
+**User Actions:**
+
+| Action | Behavior |
+| --- | --- |
+| **Save to Memory** | Pattern Analyst extracts key insight → stores in `ai_insights` with source_type='chat' |
+| **Push to Note** | Appends selected AI response to chosen note |
+| **Create Task** | Extracts action item → creates TickTick task |
+| **Continue Later** | Conversation persisted, resumable from any screen |
+
+**Chat Drawer Behavior:**
+- `⌘+/` toggles from any screen
+- Shows conversation history with date grouping
+- "New Chat" starts fresh context
+- Context badge shows: active agent + linked entity (if any)
+- Search across all past conversations
+
+**Memory Extraction ("Save to Memory"):**
+```
+1. User clicks "Save to Memory" on AI response
+2. Pattern Analyst summarizes: key fact, preference, or decision
+3. Stores in ai_insights with:
+   - insight_type: 'user_preference' | 'decision' | 'pattern' | 'fact'
+   - source_conversation_id
+   - extracted_text
+4. Future context assembly includes relevant memories
+```
+
 ---
 
 ## 5. Technical Architecture
@@ -413,7 +456,44 @@ valuesAlignment = assessmentPct * mentionRatio
 ### 5.2 Database Schema (Key Tables)
 
 ```sql
--- profiles: user settings, encryption_key_hash, core_values[]-- notes: including assessment_type, assessment_score for assessment notes-- journal_entries: encrypted content, AI-inferred mood_label, energy_rating-- meeting_notes: encrypted sensitive fields, unencrypted queryable fields-- health_metrics: Whoop data-- ai_insights: pattern analysis results-- cue_rules, cue_instances: intervention system-- integration_tokens: encrypted OAuth tokens
+-- profiles: user settings, encryption_key_hash, core_values[]
+-- notes: including assessment_type, assessment_score for assessment notes
+-- journal_entries: encrypted content, AI-inferred mood_label, energy_rating
+-- meeting_notes: encrypted sensitive fields, unencrypted queryable fields
+-- health_metrics: Whoop data
+-- ai_insights: pattern analysis results (including chat-extracted memories)
+-- ai_conversations: persistent chat history with context linking
+-- ai_messages: individual messages within conversations
+-- cue_rules, cue_instances: intervention system
+-- integration_tokens: encrypted OAuth tokens
+```
+
+**AI Conversation Tables:**
+```sql
+-- ai_conversations: conversation sessions
+create table ai_conversations (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references profiles(id) not null,
+  title text, -- auto-generated or user-named
+  context_type text not null, -- 'focus_session' | 'journal_reflection' | 'meeting_prep' | 'general'
+  linked_note_id uuid references notes(id),
+  linked_journal_id uuid references journal_entries(id),
+  linked_meeting_id uuid references meeting_notes(id),
+  agent_type text not null, -- 'executive_coach' | 'pattern_analyst' | 'research_assistant' | 'communications_coach'
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- ai_messages: messages within conversations
+create table ai_messages (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id uuid references ai_conversations(id) not null,
+  role text not null, -- 'user' | 'assistant'
+  content text not null,
+  saved_to_memory boolean default false,
+  pushed_to_note_id uuid references notes(id),
+  created_at timestamptz default now()
+);
 ```
 
 Full schema in Appendix A.

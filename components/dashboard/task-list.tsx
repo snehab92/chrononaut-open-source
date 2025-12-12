@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Circle, Loader2, Calendar, ArrowRight, ChevronDown } from "lucide-react";
 import Link from "next/link";
 import {
@@ -10,28 +10,19 @@ import {
 } from "@/components/ui/popover";
 import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
-
-interface Task {
-  id: string;
-  title: string;
-  projectId: string;
-  priority: number;
-  dueDate: string | null;
-  isCompleted: boolean;
-}
+import { useTaskContext, Task } from "./task-context";
 
 interface TaskListProps {
-  tasks: Task[];
   isConnected: boolean;
 }
 
 type ViewMode = "today" | "week";
 
-export function TaskList({ tasks, isConnected }: TaskListProps) {
+export function TaskList({ isConnected }: TaskListProps) {
+  const { tasks, refreshTasks } = useTaskContext();
   const [viewMode, setViewMode] = useState<ViewMode>("today");
   const [completingTask, setCompletingTask] = useState<string | null>(null);
   const [updatingDate, setUpdatingDate] = useState<string | null>(null);
-  const [localTasks, setLocalTasks] = useState(tasks);
 
   // Filter tasks based on view mode
   const today = new Date();
@@ -40,7 +31,7 @@ export function TaskList({ tasks, isConnected }: TaskListProps) {
   const endOfWeek = new Date(today);
   endOfWeek.setDate(endOfWeek.getDate() + 7);
 
-  const filteredTasks = localTasks.filter((task) => {
+  const filteredTasks = tasks.filter((task) => {
     if (!task.dueDate) return false;
     const dueDate = new Date(task.dueDate);
     dueDate.setHours(0, 0, 0, 0);
@@ -84,7 +75,8 @@ export function TaskList({ tasks, isConnected }: TaskListProps) {
       });
 
       if (response.ok) {
-        setLocalTasks((prev) => prev.filter((t) => t.id !== task.id));
+        // Refresh tasks from database
+        await refreshTasks();
       }
     } catch (error) {
       console.error("Failed to complete task:", error);
@@ -110,11 +102,8 @@ export function TaskList({ tasks, isConnected }: TaskListProps) {
       });
 
       if (response.ok) {
-        setLocalTasks((prev) =>
-          prev.map((t) =>
-            t.id === task.id ? { ...t, dueDate: newDate.toISOString() } : t
-          )
-        );
+        // Refresh tasks from database
+        await refreshTasks();
       }
     } catch (error) {
       console.error("Failed to update due date:", error);
