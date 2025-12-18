@@ -629,3 +629,319 @@ Growth Scope:
 ---
 
 *End of December 12, 2025 session (ongoing)*
+
+---
+
+## Session: December 13, 2025 (Continued from Dec 12)
+
+### Session Reference Info
+- **Date:** December 13, 2025
+- **Approximate Duration:** ~3 hours
+- **Week/Day:** Week 5
+- **Build Plan Goals:** Notes Screen Phase 3, AI Agent Integration
+
+---
+
+### What I Set Out To Do
+
+1. Complete Notes Screen Phase 3 (Rich text editor + templates)
+2. Build AI agent integration (Week 5 of build plan)
+3. Test and debug chat functionality
+
+---
+
+### Change Log Summary
+
+| Category | Change | Files |
+|----------|--------|-------|
+| **Notes** | Tiptap rich text editor with formatting toolbar | `components/rich-editor.tsx` |
+| **Notes** | Note templates (Meeting, Document, Quick Capture) | `lib/note-templates.ts` |
+| **Notes** | Removed assessment note type (will use external assessments) | `app/(authenticated)/notes/page.tsx` |
+| **AI** | 4-agent system (Executive Coach, Therapist, Pattern Analyst, Research Assistant) | `lib/ai/agents.ts` |
+| **AI** | Streaming chat API endpoint | `app/api/chat/route.ts` |
+| **AI** | Chat drawer with agent selector | `components/chat-drawer.tsx` |
+| **AI** | Conversation persistence tables | `supabase/migrations/20251212050000_ai_conversations.sql` |
+| **UI** | Global ⌘/ keyboard shortcut for chat | `components/app-shell.tsx` |
+| **UI** | History modal with rename/delete | `components/chat-drawer.tsx` |
+| **Deps** | Installed Tiptap editor | `@tiptap/react`, `@tiptap/starter-kit`, `@tiptap/extension-placeholder` |
+| **Deps** | Installed Vercel AI SDK | `ai`, `@ai-sdk/anthropic` |
+
+---
+
+### Daily Summary
+
+#### 1. Completed Tasks Summary
+
+- ✅ Notes Phase 3: Rich text editor with formatting toolbar
+- ✅ Note templates (Meeting, Document, Quick Capture)
+- ✅ Removed assessment note type per user request
+- ✅ AI agent configuration with system prompts
+- ✅ Chat drawer UI with agent switching
+- ✅ Streaming chat working with Claude Sonnet 4
+- ✅ Conversation history modal with rename/delete
+- ✅ Chat persistence per agent (in-memory cache)
+- ✅ Context-aware default agents (journal → therapist)
+
+---
+
+#### 2. Completed Tasks Drill-Down
+
+##### 2a. Notes Phase 3: Rich Text Editor (~30 min)
+
+**What was built:**
+- Tiptap-based rich editor with formatting toolbar
+- Toolbar buttons: Bold, Italic, H1, H2, Bullet list, Numbered list, Blockquote, Divider, Undo/Redo
+- Fixed SSR hydration issue with `immediatelyRender: false`
+
+**Templates:**
+- Meeting: Attendees, Agenda, Discussion, Action Items, Next Steps
+- Document: Basic heading + content
+- Quick Capture: Minimal structure
+
+**Assessment removal:** Per user request, removed assessment note type. Assessments will be completed externally and imported to "About Me" folders for AI context.
+
+---
+
+##### 2b. AI Agent Integration (~2 hours)
+
+**Architecture Decisions:**
+- Claude-only approach (Sonnet 4 for all agents) - "one brain" philosophy
+- 4 agents with distinct personalities and contexts
+- Pattern Analyst is background-only (no direct chat)
+- Wispr Flow for dictation (user already has account)
+
+**Agent Configurations:**
+
+| Agent | Model | Role | Default For |
+|-------|-------|------|-------------|
+| Executive Coach | claude-sonnet-4-20250514 | Productivity, meeting prep, work challenges | Dashboard, Notes, Focus, Meeting |
+| Therapist | claude-sonnet-4-20250514 | Journal reflection, emotional processing, DBT/ACT | Journal |
+| Pattern Analyst | claude-sonnet-4-20250514 | Background analysis, structured JSON output | (no direct chat) |
+| Research Assistant | claude-sonnet-4-20250514 | Quick research, summarization, fact-finding | Research context |
+
+**Database schema:**
+```sql
+ai_conversations (
+  id, user_id, agent_type, title,
+  context_type, context_id, created_at, updated_at
+)
+
+ai_messages (
+  id, conversation_id, role, content, created_at
+)
+```
+
+---
+
+##### 2c. Chat Drawer Implementation (~1 hour)
+
+**Features:**
+- Slide-over panel (420px width)
+- Agent selector dropdown (hides Pattern Analyst)
+- Message streaming from Claude
+- Copy/Insert buttons on assistant messages
+- Conversation history modal with:
+  - Filtered by current agent
+  - Chronologically sorted
+  - Rename capability (inline edit)
+  - Delete with confirmation
+- Chat persistence per agent (in-memory cache)
+- Context-aware default agent based on current screen
+
+**Keyboard shortcuts:**
+- ⌘/ to toggle chat
+- Shift+Enter for new line
+- Enter to send
+
+---
+
+##### 2d. AI SDK v5 Troubleshooting (~1 hour)
+
+**Problem:** Multiple API changes in Vercel AI SDK v5 caused errors.
+
+**Issues encountered:**
+
+| Issue | Error | Solution |
+|-------|-------|----------|
+| useChat hook | `handleInputChange`, `setInput`, `append` not functions | Abandoned useChat, implemented manual fetch |
+| Streaming response | `toDataStreamResponse is not a function` | Changed to `toTextStreamResponse()` |
+| SSE parsing | Complex chunk parsing needed | Simplified to plain text streaming |
+| Hydration mismatch | `crypto.randomUUID()` during SSR | Deferred initialization to useEffect |
+
+**Final architecture:** Manual implementation instead of useChat hook:
+1. Local state for messages, input, loading
+2. Manual fetch to `/api/chat`
+3. Manual stream reading with `response.body.getReader()`
+4. Direct text accumulation (not SSE parsing)
+
+---
+
+#### 3. Key Concepts Learned
+
+##### Vercel AI SDK Architecture
+
+**How it works:**
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Browser   │────▶│  Next.js    │────▶│  Anthropic  │
+│  (client)   │◀────│   API       │◀────│    API      │
+│             │     │  /api/chat  │     │             │
+└─────────────┘     └─────────────┘     └─────────────┘
+       │                   │                   │
+   Manual fetch      streamText()        HTTPS only
+   + stream read     handles auth        (API key in
+                     via env var         server env)
+```
+
+**Key insight:** No OAuth for Claude! Unlike Google Calendar or Whoop, Claude uses simple API key authentication:
+- API key stored in `.env.local` as `ANTHROPIC_API_KEY`
+- Key never exposed to client (only server-side)
+- Vercel AI SDK reads env var automatically
+- No token refresh, no OAuth dance, no user consent flow
+
+**Why no OAuth for AI APIs?**
+- AI APIs bill the developer, not the end user
+- No user data to protect (unlike calendar/health data)
+- Developer controls access via their API key
+- Rate limits and costs are developer's responsibility
+
+**Data flow:**
+```
+1. User types message
+2. Client sends POST to /api/chat with:
+   - messages array
+   - agentType
+   - conversationId
+   - optional context
+3. Server verifies Supabase auth (user owns this request)
+4. Server calls Claude via SDK (API key from env)
+5. Claude streams response
+6. Server pipes stream to client
+7. Client reads stream chunks, updates UI
+8. Client saves to Supabase (conversation + messages)
+```
+
+**Cost model:**
+- Sonnet 4: ~$3/million input tokens, ~$15/million output tokens
+- Personal use estimate: $5-15/month
+- No per-user API keys needed—single developer key
+
+---
+
+##### Manual Streaming vs useChat Hook
+
+**useChat hook (didn't work reliably in v5):**
+```tsx
+const { messages, input, handleSubmit } = useChat({ api: "/api/chat" });
+// One line, but black-box behavior
+```
+
+**Manual implementation (what we built):**
+```tsx
+// State management
+const [messages, setMessages] = useState([]);
+const [inputValue, setInputValue] = useState("");
+const [isLoading, setIsLoading] = useState(false);
+
+// Fetch + stream
+const response = await fetch("/api/chat", { ... });
+const reader = response.body?.getReader();
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  const chunk = decoder.decode(value);
+  // Update message content incrementally
+}
+```
+
+**Trade-off:** More code but full control and easier debugging.
+
+---
+
+#### 4. Key Learnings
+
+##### Technical Learnings
+
+| Concept | What I Learned |
+|---------|-----------------|
+| **AI SDK v5** | Breaking changes from v4; useChat hook unreliable, manual fetch more stable |
+| **toTextStreamResponse** | Returns plain text stream; simpler than SSE parsing |
+| **Hydration errors** | Any `crypto.randomUUID()` or `Date.now()` in initial render causes mismatches |
+| **API key auth** | AI providers use simple API keys, not OAuth (developer pays, not user) |
+| **Tiptap SSR** | Requires `immediatelyRender: false` to avoid hydration issues |
+
+##### ADHD-Specific Observations
+
+- **Agent switching clears chat** - Good UX decision to avoid confusion
+- **Context-aware defaults** - Journal → Therapist feels natural
+- **Keyboard shortcut (⌘/)** - Quick access matches power user expectations
+
+---
+
+#### 5. Files to Edit Agent Prompts
+
+**Primary file:** `/lib/ai/agents.ts`
+
+Contains:
+- `AGENTS` object with all 4 agent configurations
+- Each agent has: `id`, `name`, `icon`, `model`, `description`, `systemPrompt`
+- `CONTEXT_DEFAULT_AGENTS` mapping for screen → agent defaults
+- `getAgent()` helper function
+
+**Example structure:**
+```typescript
+export const AGENTS: Record<AgentType, AgentConfig> = {
+  "executive-coach": {
+    id: "executive-coach",
+    name: "Executive Coach",
+    icon: "🎯",
+    model: "claude-sonnet-4-20250514",
+    description: "Productivity coaching, meeting prep, work challenges",
+    systemPrompt: `You are an executive coach with 25+ years experience...
+      Style:
+      - Direct and warm—no fluff
+      - One small step at a time
+      - Never shame; always curious
+      ...`,
+  },
+  // ... other agents
+};
+```
+
+---
+
+#### 6. Final System State
+
+**Working:**
+- ✅ Notes screen with rich text editor
+- ✅ Note templates (Meeting, Document, Quick Capture)
+- ✅ Chat drawer with ⌘/ shortcut
+- ✅ All 4 agents configured
+- ✅ Streaming chat responses
+- ✅ Conversation history modal
+- ✅ Chat persistence per agent
+- ✅ Context-aware default agents
+- ✅ Rename/delete conversations
+
+**Next Steps:**
+1. "About Me" section for AI context (user preferences, values, goals)
+2. Pattern Analyst background analysis
+3. Journal screen (to feed Therapist agent)
+4. Meeting transcription integration
+
+---
+
+*End of December 13, 2025 session*
+
+---
+
+## Session: December 17, 2025 
+
+Focus areas for today (in sequential order):
+1. Pattern analyzer <> task build out: lines 144-162
+2. AI chat drawer <> notes screen UI/UX enhancements: lines 327-333
+3. Focus screen build out: lines 362-375
+4. Journal screen build out: lines 384-416; 436-458 (we can implement e2ee lines 416-433 later, unless you disagree?)
+5. Meeting screen build out: 463-519
+6. Claude pattern analysis agent - other workflows: 523-594
+7. Notes export/import functionality - line 360

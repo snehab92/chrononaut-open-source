@@ -452,3 +452,209 @@ daily_commitments (
 ---
 
 *End of December 12, 2025 decisions*
+
+---
+
+## December 13, 2025
+
+### AI-001: Claude-Only Agent Architecture
+
+**Context:** PRD specified using Claude for coaching/analysis and Gemini for speed/voice tasks.
+
+**Decision:** Use Claude Sonnet 4 for all 4 agents ("one brain" approach).
+
+**Rationale:**
+- Simpler to maintain one provider
+- Consistent personality across agents
+- Sonnet 4 is fast enough for real-time chat
+- Voice mode (Gemini's strength) deferred to later phase
+- Cost difference negligible for personal use
+
+**Agents:**
+| Agent | Purpose | Direct Chat? |
+|-------|---------|-------------|
+| Executive Coach | Productivity, meeting prep, work challenges | ✅ Yes |
+| Therapist | Journal reflection, DBT/ACT, emotional processing | ✅ Yes |
+| Pattern Analyst | Background analysis, mood classification, metrics | ❌ No (system only) |
+| Research Assistant | Quick research, summarization, fact-finding | ✅ Yes |
+
+**Consequences:**
+- ✅ Simpler codebase (one SDK, one API key)
+- ✅ Consistent user experience
+- ⚠️ May revisit for voice mode (Gemini 2.0 Flash)
+- 📝 Pattern Analyst runs in background, not exposed to users
+
+---
+
+### AI-003: Manual Streaming vs useChat Hook
+
+**Context:** Vercel AI SDK v5 provides `useChat` hook for chat UI, but it had breaking changes.
+
+**Decision:** Implement manual fetch + streaming instead of useChat hook.
+
+**Issues with useChat in v5:**
+- `handleInputChange` not a function
+- `setInput` not a function  
+- `append` not a function
+- Different API from v4 documentation
+
+**Manual implementation:**
+```typescript
+// State
+const [messages, setMessages] = useState([]);
+const [inputValue, setInputValue] = useState("");
+
+// Send
+const response = await fetch("/api/chat", { ... });
+const reader = response.body?.getReader();
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  chunk = decoder.decode(value);
+  // Accumulate and update UI
+}
+```
+
+**Trade-offs:**
+
+| useChat Hook | Manual Implementation |
+|--------------|----------------------|
+| Less code | More code (~50 lines) |
+| Black-box behavior | Full control |
+| SDK version dependent | Stable across versions |
+| Hard to debug | Easy to debug |
+
+**Consequences:**
+- ✅ Full control over streaming behavior
+- ✅ Easier debugging when things break
+- ✅ Not dependent on SDK internal changes
+- ⚠️ More boilerplate code
+- 📝 Can migrate back to useChat when SDK stabilizes
+
+---
+
+### AI-004: Context-Aware Default Agents
+
+**Context:** Different screens benefit from different AI personalities.
+
+**Decision:** Map screens to default agents, switchable by user.
+
+**Mapping:**
+```typescript
+CONTEXT_DEFAULT_AGENTS = {
+  dashboard: "executive-coach",
+  notes: "executive-coach",
+  focus: "executive-coach",
+  meeting: "executive-coach",
+  journal: "therapist",        // ← Different!
+  research: "research-assistant",
+};
+```
+
+**Rationale:**
+- Journal → Therapist: Emotional processing needs different tone
+- Work screens → Executive Coach: Action-oriented, direct
+- Research → Research Assistant: Factual, concise
+
+**User override:** Agent selector always visible; user can switch anytime.
+
+**Consequences:**
+- ✅ Appropriate default behavior per context
+- ✅ User retains full control
+- ✅ Reduces cognitive load (right agent auto-selected)
+
+---
+
+### AI-005: Chat Persistence Strategy
+
+**Context:** Users expect to continue conversations across sessions.
+
+**Decision:** Three-layer persistence:
+
+1. **In-memory cache** (per agent, current session)
+   - Survives agent switching within same browser session
+   - Lost on page refresh
+
+2. **Database storage** (permanent)
+   - `ai_conversations` table for conversation metadata
+   - `ai_messages` table for message history
+   - Persists across sessions
+
+3. **History modal** (user-accessible)
+   - Filtered by current agent
+   - Chronologically sorted
+   - Rename/delete capability
+
+**Agent switching behavior:**
+- Saves current chat to cache for that agent
+- Restores cached chat when switching back
+- New conversation = explicit user action
+
+**Consequences:**
+- ✅ Smooth agent switching without losing context
+- ✅ Conversation history survives browser refresh
+- ✅ Users can rename conversations for findability
+- 📝 Cache clears on page refresh (by design)
+
+---
+
+### UI-003: Remove Assessment Note Type
+
+**Context:** PRD specified assessment notes (Self-Compassion, Values Alignment) as a note type.
+
+**Decision:** Remove assessment note type; assessments completed externally and imported.
+
+**Rationale:**
+- Assessments are structured questionnaires with scoring—awkward as "notes"
+- Better UX: complete on official sites (self-compassion.org, etc.)
+- Import results to "About Me" folder for AI context
+- Reduces complexity in notes screen
+
+**Alternative approach:**
+- Create "About Me" folder structure
+- Store assessment results as documents
+- AI agents read from "About Me" for personalization
+
+**Consequences:**
+- ✅ Simpler notes screen (3 types: Meeting, Document, Quick Capture)
+- ✅ Validated assessments from official sources
+- ⚠️ Requires manual import step for users
+- 📝 "About Me" section to be built next
+
+---
+
+### UI-004: Chat Drawer UX Patterns
+
+**Context:** Need intuitive chat interface that doesn't disrupt main workflow.
+
+**Decisions:**
+
+1. **Slide-over drawer** (not modal)
+   - Main content remains visible
+   - User maintains context
+   - 420px width (comfortable reading)
+
+2. **Agent switching clears chat**
+   - Prevents confusion about who you're talking to
+   - Each agent = fresh context
+   - Previous chat cached (can switch back)
+
+3. **History in modal** (not inline)
+   - Cleaner primary interface
+   - History is secondary action
+   - Modal provides focused browsing experience
+
+4. **Keyboard-first** (⌘/)
+   - Quick toggle from anywhere
+   - Shift+Enter for multiline
+   - Enter to send (expected pattern)
+
+**Consequences:**
+- ✅ Non-disruptive to main workflow
+- ✅ Clear mental model (one agent, one conversation)
+- ✅ Power user friendly
+- ✅ Touch-friendly (buttons visible)
+
+---
+
+*End of December 13, 2025 decisions*

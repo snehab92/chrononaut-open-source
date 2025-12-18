@@ -1,12 +1,9 @@
-# Chrononaut: Week By Week Build Plan
+# Chrononaut: Build Plan Tracker
 
 **Version:** 1.0 (MVP)
 
-**Last Updated:** December 1, 2025
+**Last Updated:** December 17, 2025
 
-**Timeline:** 10 weeks @ 6 hours/day
-
-**Status:** Ready to Execute
 
 ---
 ## Reading List
@@ -23,11 +20,11 @@
 | **v0.dev** | Natural language → React components | UI 10x faster |
 | **Cursor + MCP** | AI coding with DB context | Backend 3-5x faster |
 | **Supabase CLI** | Migration-based schema | Safe DB changes |
-| **Vercel AI SDK** | Unified Claude + Gemini interface | No provider boilerplate |
+| **Vercel AI SDK** | Unified Claude interface | No provider boilerplate |
 
 ---
 
-## Pre-Development Setup (Day 0)
+## Pre-Development Setup
 
 ### 1. Deploy Starter Template
 
@@ -61,15 +58,15 @@ npm run dev
 
 ---
 
-## Week-by-Week Plan
+## By Module - Plan
 
 ---
 
-### Week 1: Database + Auth + Shell
+### Database + Auth + Shell
 
 **Goal:** Complete schema, auth flow, app navigation
 
-### Day 1-2: Database Schema
+### Database Schema
 
 ```bash
 npx supabase migration new initial_schema
@@ -94,15 +91,13 @@ Create Supabase migration from CHRONONAUT_PRD_v3.md section 5.2. Include:
 - Check constraints on ratings/scores
 ```
 
-### Day 3: Auth Enhancement
+### Auth Enhancement
 
 - Profile creation trigger on signup
 - Onboarding redirect if not completed
 - Protected route middleware
 
-### Day 4-5: App Shell + Global Menu
-
-**v0 prompt:**
+### App Shell + Global Menu
 
 ```
 Next.js app shell with:
@@ -115,18 +110,18 @@ Next.js app shell with:
 ```
 
 **Deliverables:**
-- [ ] 14 tables created with RLS (including ai_conversations, ai_messages)
-- [ ] Auth flow working
-- [ ] App shell with navigation
-- [ ] Global action menu functional
+- [done] 14 tables created with RLS (including ai_conversations, ai_messages)
+- [done] Auth flow working** went with direct auth instead of oauth, because oauth wasn't working
+- [done] App shell with navigation
+- [done] Global action menu functional
 
 ---
 
-### Week 2: TickTick Integration + Tasks
+### TickTick Integration 
 
 **Goal:** Bidirectional task sync
 
-### Day 1-2: OAuth Flow
+### OAuth Flow
 
 ```
 Create TickTick OAuth:
@@ -136,7 +131,7 @@ Create TickTick OAuth:
 4. Token refresh logic
 ```
 
-### Day 3-4: Sync Engine
+### Sync Engine
 
 ```
 Bidirectional TickTick sync:
@@ -146,156 +141,81 @@ Bidirectional TickTick sync:
 4. Track sync_status per task
 ```
 
-### Day 5: Smart Task View
+### Smart Task View
 
 ```
-Task list with Today/Week toggle, priority dots, time estimates, drag-to-reorder. Empty state for no tasks or disconnected.
-```
-
-**Deliverables:**
-- [ ] TickTick OAuth working
-- [ ] Tasks syncing bidirectionally
-- [ ] Smart task view functional
-- [ ] Quick task creates in TickTick
-
----
-
-### Week 3: Notes Screen and Focus Screen
-
-
-### Day 1-3: Notes Screen
-
- **Goal:** easy to navigate notebook view of all non-journal notes database - CRUD functionality with the filter/sort ux specified in the PRD. 
-Master-detail notes:
-*Left navigation panel is much thinner than the right panel. Entire left panel can be collapsed*
-- Left: keyword search, filter chips (as per PRD)
-- Left: import/export buttons. Import in markdown, docx or PDF formats -> create a note page from the import. Export in markdown, docx or PDF formats. Markdown is the default for import and export.
-- Left: "about me" files - a.k.a "project files" in Claude AI. In this section, I am able to select (and view) files from my notes db to include in "about me" files for the embedded AI-agents to utilize. I can organize the files into "about me" folders - e.g., "assessments", "360 feedback', "writing that inspired me", etc.
--Left: notes database organized by folders and sections. UI inspiration: Notion, Obsidian.
-*Right panel is much wider. It is the pop out of the selected note*
-- Right: rich editor, title, type dropdown, tags
-- Templates by note type auto-applied 
-- Autosave, 10s undo on delete
-- Access chatbot (bottom bar that can be minimized)
-- Ability to paste chatbot content into open note
-- Export to markdown 
-```
-
-### Day 4-5: Focus Screen Shell
-
-```
-Full-screen focus mode:
-- Header: time, mode selector (Admin/Research/Writing/Meeting Prep/Toastmasters), exit
---- Two modes to timer: focus timer (total amount of time focusing so far), task timer (total amount of time on task so far) - default is on task timer mode - can toggle back and forth
---- Task timer mode displays the AI-pattern analyzer task time estimation 
-- Center: task title, large timer
-- Controls: Pause, Complete, Switch, End
-- Task drawer from right
---- Task cards display AI-pattern analyzer data: task time estimation, suggested prioritization (when to do it)
-- "Get task started" collapsible section at top of writing area with AI button -> clicking button populates section with the key "get going" items for that task. This AI response is rooted in how long it should take me, how long similar tasks in the past have taken me, energy level/state aligned with the task, suggested framework to complete, cognitive bias check, interruptions/cues that I want to set etc.
-- "Turn on focus cues" allows me to turn on/off the AI-driven pop-up cues that keep me focused on the task at hand. This is CRUCIAL to ensuring focus sessions are meaningful. The cues should be informed by current session tracking data - how many times I click out of the focus screen, how long I'm taking on different parts of the task, etc. to keep me locked in and executing. I want to gamify my attention to fight functional freeze, attention fragmentation and perfectionism.
-- Access chatbot (bottom bar that can be minimized)
-- Ability to paste chatbot content into open note
+**Goal:** Task list with Today/Week toggle, priority dots, time estimates, prioritization AI-opinion. Empty state for no tasks or disconnected.
 ```
 
 **Deliverables:**
-- [ ] Notes CRUD complete
-- [ ] Assessment templates working
-- [ ] Assessment scores saved
-- [ ] Focus screen full-screen mode
-- [ ] Timer functional
+- [done] TickTick OAuth working
+- [done] Tasks syncing bidirectionally
+- [done] Task view functional
+- [ ] Quick task button creates in TickTick in global actions menu
+- [ ] Pattern analyzer data enrichment around ticktick task data 
 
----
+## 12/17/25 session complete smart task view build:
+- Quick task button on global actions menu currently non-functional. Write UX routing.
+- Pattern analyzer UI/UX additions on task container. This container to be used in dashboard as widget, as well as focus screen as a drawer (can be collapsed away). Task cards for tasks due TODAY display ticktick data alongside AI-pattern analyzer data: 
+--- Task time estimation. Estimate for how long this task will take me, based on pattern analysis context data. "i" icon next to the estimate displays the data behind this estimation when user clicks it
+--- Suggested prioritization (when to do it today - e.g., morning, afternoon, in what order against the other tasks due today based on pattern analysis context data).  "i" icon next to the estimate displays the data behind this estimation when user clicks it
+--- Task list can be sorted based on task time estimation (shortest -> longest, vice versa), or prioritization (first -> last, vice versa)
 
-### Week 4: Whoop + Dashboard Analytics
-
-**Goal:** Health data + 4-card metrics grid
-
-### Day 1-2: Whoop OAuth + Sync
+### Google Calendar Integration + Whoop Integration + Analytics Dashboard 
 
 ```
-Whoop integration:
+## Google Calendar integration:
+1. OAuth flow
+2. Webhook for real-time updates
+3. Drag-to-reschedule on calendar view
+
+## Whoop integration:
 1. OAuth flow
 2. Daily cron (6 AM) for recovery, HRV, sleep, strain
 3. Store in health_metrics
-```
-
-### Day 3-5: Analytics Panel (4-Card Grid)
-
-**v0 prompt:**
 
 ```
-Dashboard analytics panel matching prototype:
-- 2x2 card grid, rounded corners, icons
-- Top-left: Energy (0-100%), battery icon, ↑↓ trend arrow
-- Top-right: Mood (label from enum), heart icon, → arrow
-- Bottom-left: Self-Compassion (X/10), shield icon, ↑↓ trend
-- Bottom-right: Values Alignment (0-100%), target icon, ↑↓ trend
-- Click card expands to trend chart
-```
+Analytics Panel
 
-**Calculation functions:**
-
-```tsx
-// lib/metrics/energy.tsexport async function calculateEnergy(userId: string): Promise<number> {
-  const whoop = await getWhoop7DayAvg(userId); // 0-100  const journalEnergy = await getJournalEnergy7DayAvg(userId); // 1-10  return (whoop * 0.6) + (journalEnergy * 10 * 0.4);}
-// lib/metrics/self-compassion.tsexport async function calculateSelfCompassion(userId: string): Promise<number> {
-  const assessment = await getLatestAssessment(userId, 'self_compassion');  const adjustment = await analyzeLanguagePatterns(userId); // -1 to +1  return Math.min(10, Math.max(1, assessment.score + adjustment));}
-// lib/metrics/values-alignment.tsexport async function calculateValuesAlignment(userId: string): Promise<number> {
-  const assessment = await getLatestAssessment(userId, 'values_alignment');  const { aligned, total } = await countValuesMentions(userId);  return (assessment.score / 100) * (aligned / total) * 100;}
+Dashboard analytics panel:
+**Well-being** containers stacked top-down 
+- Habits (3 cards): sleep (whoop), exercise (whoop), meditation (manually tracked)
+- Mood: ai-generated enum picker from journal entries
+- Compass: ai-generated "today's insight"
+All cards can be expanded for drill down metrics
+**Growth** 4 cards using raw data from uploaded files + calculation fields in Supabase
+- Top-left: last Self-compassion assessment score -> expand card for drill down metrics
+- Top-right: latest Values-alignment assessment score -> expand card for drill down metrics
+- Bottom-left: latest Executive Function assessment data -> expand card for drill down metrics
+- Bottom-right: Strengths Profile assessment data -> expand card for drill down metrics
 ```
 
 **Deliverables:**
-- [ ] Whoop OAuth working
-- [ ] Health data syncing daily
-- [ ] 4-card grid matching prototype
-- [ ] Energy calculation from Whoop + journal
-- [ ] Self-Compassion from assessment + language
-- [ ] Values Alignment from assessment + mentions
-- [ ] Trend arrows working
+- [done] Whoop OAuth working
+- [done] Health data syncing daily
+- [done] Gcal oauth working, data syncing
+- [done] Dashboard analytics grid
 
----
+```
 
-### Week 5: AI Integration (4 Agents)
+### Claude AI Integration (4 Agents)
 
-**Goal:** Claude + Gemini connected, pattern analysis
+**Goal:** Claude connected, AI chat drawer + persistence implemented
 
-### Day 1-2: Vercel AI SDK Setup
+## Vercel AI SDK Setup
 
 ```tsx
 // lib/ai/agents.tsimport { anthropic } from '@ai-sdk/anthropic';import { google } from '@ai-sdk/google';export const patternAnalyst = anthropic('claude-3-5-sonnet-20241022');export const executiveCoach = anthropic('claude-3-5-sonnet-20241022');export const researchAssistant = google('gemini-2.0-flash');export const communicationsCoach = google('gemini-2.0-flash');
 ```
 
-**System prompts (from PRD 4.3.2):**
-- Executive Coach - mode 1: DBT/ACT trained, ADHD-experienced, direct + warm, 1:1 executive coaching
-- Executive Coach - mode 2: advisory panel of c-suite. Helps critique ideas, find vulnerabilities across POVs (pro vs con, conflicting priorities, etc.)
-- Pattern Analyst: Technical, data-focused
+**System prompts:**
+- Therapist: DBT/ACT trained, ADHD-experienced, direct + warm, 1:1 therapy integration
+- Executive Coach: 1:1 or advisory panel of c-suite. AHD-informed, helps critique ideas, find vulnerabilities across POVs (pro vs con, conflicting priorities, etc.), communications training, meeting prep
+- Pattern Analyst: Technical, data-focused, in the background
 - Research Assistant: Fast, summarization-oriented
-- Communications Coach: Speech coaching focus, can take on 1:1 roleplay as well as panel:1 role play
-
-### Day 3-4: Pattern Analysis Engine
-
-```
-Create pattern analysis:
-1. Daily cron analyzes: journals, health, tasks, cue interactions
-2. Calculates: energy, mood classification, self-compassion adjustment
-3. Stores in ai_insights table
-4. Exposes via API for dashboard
 ```
 
-**Mood classification prompt:**
-
-```
-Analyze this journal entry and classify the mood as exactly one of:
-Threatened, Stressed, Unfocused, Rejected, Creative, Adventurous,
-Angry, Manic, Calm, Content, Socially Connected, Romantic
-
-Entry: {entry_text}
-
-Respond with only the mood label.
-```
-
-### Day 5: AI Chat Drawer + Persistence
+### AI Chat Drawer + Persistence
 
 **Database tables to add:**
 ```sql
@@ -334,7 +254,7 @@ create index idx_ai_messages_conversation on ai_messages(conversation_id);
 create index idx_ai_insights_source on ai_insights(source_type);
 ```
 
-**v0 prompt:**
+**UI/UX:**
 
 ```
 Slide-over chat drawer (40% width):
@@ -392,29 +312,82 @@ export async function saveToMemory(messageId: string) {
 }
 ```
 
+```
+
 **Deliverables:**
-- [ ] Claude API connected
-- [ ] Gemini API connected
-- [ ] 4 agent prompts configured
-- [ ] Pattern analysis cron running
-- [ ] Mood classification working
-- [ ] Chat drawer functional
-- [ ] ai_conversations + ai_messages tables created
-- [ ] Chat persistence working (conversations saved)
-- [ ] "Save to Memory" extracts insight to ai_insights
-- [ ] "Push to Note" appends to selected note
-- [ ] Conversation history browsable
-- [ ] Context assembly includes relevant memories
+- [done] Claude API connected
+- [done] 4 agent prompts configured
+- [done] Chat drawer functional
+- [done] ai_conversations + ai_messages tables created
+- [done] Chat persistence working (conversations saved)
+- [done] Conversation history browsable
+
+```
+
+## 12/17/25 session - finishing items
+- Conversation list (grouped by date, shows title + context badge) - TWO ways of viewing this list: 1. Collapsible sidebar within drawer, 2. folders in the notes screen navigation bar. Section at top of notes folder section titled "Agent conversations" with 1 folder each for executive coach and research assistant agents. Subfolders (a.k.a "projects" in Claude.ai interface) can be created. New chats can be initiated from the project folder OR by selecting the appropriate project in the AI-chat drawer.
+- Each assistant message has hover actions: "Save to Memory", "Push to Note", "Create Task"
+- Streaming indicator
+- Context badge showing: active agent + linked entity (note/journal/meeting)
+- "Push to Note" opens note selector modal. Default to open note page.
+- "Save to Memory" shows confirmation toast
+
+```
+
+### Notes Screen
+
+```
+ **Goal:** easy to navigate notebook view of all non-journal notes database - CRUD functionality with the filter/sort ux specified in the PRD. 
+Master-detail notes:
+*Left navigation panel is much thinner than the right panel. Entire left panel can be collapsed*
+- Left: keyword search, filter chips (as per PRD)
+- Left: import/export buttons. Import in markdown, docx or PDF formats -> create a note page from the import. Export in markdown, docx or PDF formats. Markdown is the default for import and export.
+- Left: "about me" files section - a.k.a "project files" in Claude AI. In this section, I am able to upload (and view) files to include in "about me" files for the embedded AI-agents to utilize. I can organize the files into "about me" folders - e.g., "assessments", "360 feedback', "writing that inspired me", etc.
+-Left: notes database organized by folders and sections. UI inspiration: Notion, Obsidian.
+*Right panel is much wider. It is the pop out of the selected note*
+- Right: rich editor, title, type dropdown, tags
+- Templates by note type auto-applied 
+- Autosave, 10s undo on delete
+- Access chatbot (bottom bar that can be minimized)
+- Ability to paste chatbot content into open note
+- Export to markdown 
+
+```
+
+**Deliverables:**
+- [done] Notes CRUD complete
+- [done] Notes folders
+- [ ] export / import functionality in markdown format
+
+### Focus Screen
+
+```
+Full-screen focus mode:
+- Header: time, mode selector (Admin/Research/Writing/Meeting Prep/Toastmasters), exit
+--- Two functionalities to the timer: focus timer (total amount of time focusing so far), task timer (total amount of time on task so far) - focus timer starts/stops in background automatically based on time on screen. Task timer is triggered by user behavior (clicking start timer on a specific task or meeting)
+--- Task drawer displays ticktick data and AI-pattern analyzer data (mirrored UI/UX as task list on dashboard) AND a focus screen specific button "start timer" to trigger timer for that task
+- Center: task title, large timer
+- Controls: Pause, Complete, Switch, End
+- Task drawer from right
+- "Get task started" collapsible section at top of writing area with button to trigger job from the pattern analyzer agent -> clicking button populates section with the key "get going" items for that task. This AI response uses the following context: which mode selected, task specific data, and background pattern data from biometrics/whoop/calendar etc. The "get started" response presents suggested framework(s), cognitive bias checks, etc.
+- "Turn on focus cues" allows me to turn on/off the AI-driven pop-up cues that keep me focused on the task at hand. This is CRUCIAL to ensuring focus sessions are meaningful. The cues should be informed by current session tracking data - how many times I click out of the focus screen, how long I'm taking on different parts of the task, etc. to keep me locked in and executing. I want to gamify my attention to fight functional freeze, attention fragmentation and perfectionism.
+- Access chatbot (bottom bar that can be minimized)
+- Agents (research assistant and executive coach) are context-aware of the mode I selected, so when I open the chat drawer to initiate a chat they are ready to support that specific mode. E.g., "I see you are knocking out admin tasks, here's how I can help.."
 
 ---
 
-### Week 6: Journal Screen (Day One Style)
+
+```
+
+---
+
+### Journal Screen (Day One Style)
 
 **Goal:** Beautiful journal with AI-inferred mood/energy
 
-### Day 1-2: Entry Composer
+### Entry Composer
 
-**v0 prompt:**
+**UI/UX:**
 
 ```
 Journal composer (Day One style):
@@ -429,7 +402,7 @@ Journal composer (Day One style):
 - Autosave every 30s
 ```
 
-### Day 3: AI Inference on Save
+### Pattern Analyzer Agent In Journal - AI Background Inference 
 
 ```tsx
 // On save or "Get Insights":async function inferMoodEnergy(entryId: string) {
@@ -440,7 +413,7 @@ Journal composer (Day One style):
     energy_rating: energy,    mood_override: false,    energy_override: false  });}
 ```
 
-### Day 4: E2E Encryption
+### E2E Encryption
 
 ```
 Client-side encryption:
@@ -460,9 +433,9 @@ async function getInsights(entryId: string) {
   }).eq('id', entryId);}
 ```
 
-### Day 5: Journal Views
+### Journal Views
 
-**v0 prompt:**
+**UI/UX:**
 
 ```
 Journal views with tabs: Calendar, Map, List, Gallery
@@ -487,13 +460,13 @@ Saved filters: Travel, Work Weeks, High-Energy Days
 
 ---
 
-### Week 7: Meeting Screen + Transcription
+### Meeting Screen + Transcription
 
 **Goal:** Meeting notes with encrypted sensitive fields
 
-### Day 1-2: Meeting Screen Layout
+### Meeting Screen Layout
 
-**v0 prompt:**
+**UI/UX:**
 
 ```
 Meeting screen:
@@ -503,7 +476,7 @@ Meeting screen:
 - Templates dropdown
 ```
 
-### Day 3-4: Transcription + Encryption
+### Transcription (voice to text)
 
 ```
 Meeting transcription:
@@ -526,13 +499,13 @@ encrypted_coach_feedback
 meeting_type, risk_level, action_items
 ```
 
-### Day 5: Post-Meeting AI
+### Post-Meeting AI
 
 ```
 Post-meeting processing:
 1. Decrypt transcript + notes
 2. Send to Executive Coach for summary
-3. Extract action items → create TickTick tasks
+3. Extract action items → suggest TickTick tasks (user can create those tasks through button trigger)
 4. If coach_enabled, generate coach_feedback
 5. Encrypt all AI outputs before storage
 ```
@@ -547,18 +520,39 @@ Post-meeting processing:
 
 ---
 
+### Claude Pattern Analysis Agent - Well-being analytics and productivity scaffolding
+
+```
+Create pattern analysis:
+1. Daily cron analyzes: journals, health, tasks, cue interactions
+2. Calculates: energy, mood classification, self-compassion adjustment
+3. Stores in ai_insights table
+4. Exposes via API for dashboard
+```
+
+**Mood classification prompt:**
+
+```
+Analyze this journal entry and classify the mood as exactly one of:
+Threatened, Stressed, Unfocused, Rejected, Creative, Adventurous,
+Angry, Manic, Calm, Content, Socially Connected, Romantic
+
+Entry: {entry_text}
+
+Respond with only the mood label.
+
 ### Week 8: Focus Polish + Voice Mode
 
 **Goal:** Focus sub-modes with agents, Gemini voice
 
-### Day 1-2: Focus Mode Agents
+### Focus Mode Agents
 
 ```tsx
 // Focus screen routes to different agents based on modeconst agentForMode = {
   admin: researchAssistant,      // Gemini - quick tasks  research: researchAssistant,   // Gemini - web search  writing: executiveCoach,       // Claude - structure help  meeting_prep: executiveCoach,  // Claude - context briefing  toastmasters: communicationsCoach // Gemini - voice};
 ```
 
-### Day 3-4: Toastmasters Voice Mode
+### Toastmasters Voice Mode
 
 ```
 Gemini voice implementation:
@@ -569,7 +563,7 @@ Gemini voice implementation:
 5. Post-session summary
 ```
 
-**v0 prompt:**
+**UI/UX:**
 
 ```
 Toastmasters voice screen:
@@ -580,7 +574,7 @@ Toastmasters voice screen:
 - End session → summary with improvement tips
 ```
 
-### Day 5: Cue System
+### Day 5: Focus Screen Cue System
 
 ```
 Cue system:
@@ -591,11 +585,11 @@ Cue system:
 ```
 
 **Deliverables:**
-- [ ] Admin mode with Gemini
-- [ ] Research mode with web search
-- [ ] Writing mode with Claude
-- [ ] Meeting Prep mode with context
-- [ ] Voice mode functional
+- [ ] Pattern analysis cron running
+- [ ] Mood classification working
+- [ ] "Save to Memory" extracts insight to ai_insights
+- [ ] "Push to Note" appends to selected note
+- [ ] Context assembly includes relevant memories
 - [ ] Cue system firing
 - [ ] Cue interactions logging
 
@@ -603,20 +597,12 @@ Cue system:
 
 ### Week 9: Polish + Wind-Down
 
-**Goal:** GCal direct sync, wind-down ritual, edge cases
+**Goal:** Wind-down ritual, edge cases
 
-### Day 1-2: Google Calendar
-
-```
-Google Calendar integration:
-1. OAuth flow
-2. Webhook for real-time updates
-3. Drag-to-reschedule on calendar view
-```
 
 ### Day 3: Wind-Down Ritual
 
-**v0 prompt:**
+**UI/UX:**
 
 ```
 Wind-down modal:
@@ -677,39 +663,7 @@ Test all flows:
 - [ ]  Error monitoring enabled
 - [ ]  **SHIPPED! 🚀**
 
----
 
-## V0 Prompt Library
-
-### Dashboard 4-Card Grid
-
-```
-2x2 analytics grid matching prototype:
-- Energy (0-100%, battery icon, ↑↓)
-- Mood (label, heart icon, →)
-- Self-Compassion (X/10, shield icon, ↑↓)
-- Values Alignment (0-100%, target icon, ↑↓)
-Click to expand trends. shadcn/ui cards.
-```
-
-### Journal Composer
-
-```
-Day One-style journal:
-- Date, location, photo drop zone
-- Three text areas (happened, feelings, grateful)
-- Tags, AI-inferred Mood/Energy dropdowns
-- Encryption badge, Get Insights button
-```
-
-### Meeting Screen
-
-```
-Meeting with split view:
-- Header: title, attendees, timer, 🔒, recording
-- Left: live transcript
-- Right: rich notes
-- Footer: record, coach toggle, end
 ```
 
 ---

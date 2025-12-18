@@ -7,6 +7,7 @@ export interface Task {
   id: string;
   localId: string;
   title: string;
+  content: string | null; // Task description/details - used for [u.e Xm] parsing
   projectId: string;
   priority: number;
   dueDate: string | null;
@@ -84,6 +85,7 @@ export function TaskProvider({ children, initialTasks, isConnected }: TaskProvid
         id: task.ticktick_id || task.id,
         localId: task.id,
         title: task.title,
+        content: task.content || null, // Task description for [u.e Xm] parsing
         projectId: task.ticktick_list_id,
         priority: mapLocalPriority(task.priority),
         dueDate: task.due_date,

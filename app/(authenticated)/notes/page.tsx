@@ -32,6 +32,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { NOTE_TEMPLATES, getTemplateForNote } from "@/lib/note-templates";
+import { Sparkles, MessageSquare } from "lucide-react";
 
 // Dynamically import RichEditor to avoid SSR issues with Tiptap
 const RichEditor = dynamic(() => import("@/components/rich-editor").then(mod => mod.RichEditor), {
@@ -57,6 +58,13 @@ interface FolderType {
   id: string;
   name: string;
   parent_id: string | null;
+}
+
+interface AIConversation {
+  id: string;
+  title: string;
+  context_type: string | null;
+  last_message_at: string;
 }
 
 const NOTE_TYPE_LABELS: Record<NoteType, string> = {
@@ -89,6 +97,12 @@ export default function NotesPage() {
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   
+  // AI Conversations
+  const [aiConversations, setAiConversations] = useState<AIConversation[]>([]);
+  const [isAiConversationsExpanded, setIsAiConversationsExpanded] = useState(true);
+  const [selectedConversation, setSelectedConversation] = useState<AIConversation | null>(null);
+  const [conversationMessages, setConversationMessages] = useState<any[]>([]);
+  
   // Local state for editor (prevents lag)
   const [localTitle, setLocalTitle] = useState("");
   const [localContent, setLocalContent] = useState("");
@@ -99,10 +113,11 @@ export default function NotesPage() {
   const supabase = createClient();
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fetch notes and folders on mount
+  // Fetch notes, folders, and AI conversations on mount
   useEffect(() => {
     fetchNotes();
     fetchFolders();
+    fetchAiConversations();
   }, []);
 
   async function fetchNotes() {
@@ -137,6 +152,32 @@ export default function NotesPage() {
 
     if (!error && data) {
       setFolders(data);
+    }
+  }
+
+  async function fetchAiConversations() {
+    try {
+      const response = await fetch("/api/ai/chat/history");
+      if (response.ok) {
+        const data = await response.json();
+        setAiConversations(data.conversations || []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch AI conversations:", error);
+    }
+  }
+
+  async function loadConversation(conv: AIConversation) {
+    setSelectedConversation(conv);
+    setSelectedNote(null);
+    try {
+      const response = await fetch(`/api/ai/chat/history?conversationId=${conv.id}`);
+      if (response.ok) {
+        const data = await response.json();
+        setConversationMessages(data.messages || []);
+      }
+    } catch (error) {
+      console.error("Failed to load conversation:", error);
     }
   }
 
@@ -502,6 +543,49 @@ export default function NotesPage() {
               )}
             </div>
 
+            {/* AI Conversations Section */}
+            {aiConversations.length > 0 && (
+              <div className="border-b border-[#E8DCC4]">
+                <button
+                  onClick={() => setIsAiConversationsExpanded(!isAiConversationsExpanded)}
+                  className="w-full p-3 flex items-center justify-between text-sm text-[#5C7A6B] hover:bg-[#FAF8F5]"
+                >
+                  <span className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4" />
+                    AI Conversations
+                  </span>
+                  {isAiConversationsExpanded ? (
+                    <ChevronUp className="w-4 h-4" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4" />
+                  )}
+                </button>
+                
+                {isAiConversationsExpanded && (
+                  <div className="px-2 pb-2 max-h-48 overflow-y-auto">
+                    {aiConversations.slice(0, 10).map((conv) => (
+                      <button
+                        key={conv.id}
+                        onClick={() => {
+                          loadConversation(conv);
+                          setSelectedConversation(conv);
+                        }}
+                        className={cn(
+                          "w-full px-3 py-2 text-left text-sm rounded-md flex items-center gap-2",
+                          selectedConversation?.id === conv.id
+                            ? "bg-[#F5F0E6] text-[#1E3D32]"
+                            : "text-[#5C7A6B] hover:bg-[#FAF8F5]"
+                        )}
+                      >
+                        <MessageSquare className="w-3 h-3 flex-shrink-0" />
+                        <span className="truncate">{conv.title}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Note List */}
             <div className="flex-1 overflow-y-auto">
               {isLoading ? (
@@ -516,7 +600,10 @@ export default function NotesPage() {
                 filteredNotes.map((note) => (
                   <div
                     key={note.id}
-                    onClick={() => setSelectedNote(note)}
+                    onClick={() => {
+                      setSelectedNote(note);
+                      setSelectedConversation(null);
+                    }}
                     className={cn(
                       "p-3 border-b border-[#E8DCC4] cursor-pointer transition-colors group",
                       selectedNote?.id === note.id
@@ -573,9 +660,59 @@ export default function NotesPage() {
         )}
       </div>
 
-      {/* Right Panel - Editor */}
+      {/* Right Panel - Editor or Conversation View */}
       <div className="flex-1 flex flex-col">
-        {selectedNote ? (
+        {selectedConversation ? (
+          /* AI Conversation View */
+          <>
+            <div className="p-4 border-b border-[#E8DCC4] bg-white">
+              <div className="flex items-center gap-3">
+                <Sparkles className="w-5 h-5 text-[#2D5A47]" />
+                <div className="flex-1">
+                  <h2 className="text-lg font-serif font-semibold text-[#1E3D32]">
+                    {selectedConversation.title}
+                  </h2>
+                  <p className="text-xs text-[#8B9A8F]">
+                    {new Date(selectedConversation.last_message_at).toLocaleString()}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedConversation(null);
+                    setConversationMessages([]);
+                  }}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#FAF8F5]">
+              {conversationMessages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={cn(
+                    "flex",
+                    msg.role === "user" ? "justify-end" : "justify-start"
+                  )}
+                >
+                  <div className={cn(
+                    "max-w-[80%] rounded-2xl px-4 py-2",
+                    msg.role === "user"
+                      ? "bg-[#2D5A47] text-white"
+                      : "bg-white text-[#1E3D32] shadow-sm"
+                  )}>
+                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                    <p className="text-xs opacity-60 mt-1">
+                      {new Date(msg.created_at).toLocaleTimeString()}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : selectedNote ? (
           <>
             {/* Editor Header */}
             <div className="p-4 border-b border-[#E8DCC4] bg-white">
