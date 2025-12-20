@@ -3,8 +3,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 
-  X, Send, MessageSquare, Copy, Check,
-  History, Plus, Trash2, ClipboardPaste, Pencil
+  Send, MessageSquare, Copy, Check,
+  History, Plus, Trash2, ClipboardPaste, Pencil, Minus,
+  MoreVertical, FileText, Settings, Brain, BookOpen
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -22,16 +23,56 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
-import { AGENTS, AgentType, CONTEXT_DEFAULT_AGENTS } from "@/lib/ai/agents";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { AGENTS, AgentType } from "@/lib/ai/agents";
+
+// Comprehensive markdown to HTML converter with inline styles
+function markdownToHtml(text: string): string {
+  let result = text;
+  
+  result = result.replace(/^### (.+)$/gm, '<h3 style="font-size: 1rem; font-weight: 600; margin: 0.5em 0 0.25em 0;">$1</h3>');
+  result = result.replace(/^## (.+)$/gm, '<h2 style="font-size: 1.1rem; font-weight: 600; margin: 0.5em 0 0.25em 0;">$1</h2>');
+  result = result.replace(/^# (.+)$/gm, '<h1 style="font-size: 1.2rem; font-weight: 600; margin: 0.5em 0 0.25em 0;">$1</h1>');
+  result = result.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+  result = result.replace(/___(.+?)___/g, '<strong><em>$1</em></strong>');
+  result = result.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  result = result.replace(/__(.+?)__/g, '<strong>$1</strong>');
+  result = result.replace(/(?<![\w*])\*([^*]+)\*(?![\w*])/g, '<em>$1</em>');
+  result = result.replace(/(?<![\w_])_([^_]+)_(?![\w_])/g, '<em>$1</em>');
+  result = result.replace(/`([^`]+)`/g, '<code style="background: rgba(0,0,0,0.05); padding: 0.1em 0.3em; border-radius: 3px; font-size: 0.9em;">$1</code>');
+  result = result.replace(/^[\-\*] (.+)$/gm, '<li style="margin-left: 1em; list-style-type: disc;">$1</li>');
+  result = result.replace(/^\d+\. (.+)$/gm, '<li style="margin-left: 1em; list-style-type: decimal;">$1</li>');
+  result = result.replace(/\n\n/g, '</p><p style="margin: 0.5em 0;">');
+  result = result.replace(/\n/g, '<br/>');
+  
+  return result;
+}
+
+interface FocusContextData {
+  focusMode?: string;
+  focusModeLabel?: string;
+  currentTask?: string;
+  sessionDuration?: string;
+}
 
 interface ChatDrawerProps {
   isOpen: boolean;
   onClose: () => void;
+  onMinimize?: () => void;
   contextType?: string;
   contextId?: string;
   contextContent?: string;
   onInsertToNote?: (content: string) => void;
+  defaultAgentOverride?: AgentType;
+  focusContext?: FocusContextData;
 }
 
 interface Conversation {
@@ -42,6 +83,21 @@ interface Conversation {
   updated_at: string;
 }
 
+interface AgentInstruction {
+  id: string;
+  agent_type: AgentType;
+  instructions: string;
+  is_active: boolean;
+}
+
+interface AiInsight {
+  id: string;
+  insight_type: string;
+  content: string;
+  created_at: string;
+  source_type: string;
+}
+
 // Cache for persisting chats per agent
 const agentChatCache: Record<string, {
   conversationId: string;
@@ -50,15 +106,30 @@ const agentChatCache: Record<string, {
 
 export function ChatDrawer({ 
   isOpen, 
-  onClose, 
+  onClose,
+  onMinimize,
   contextType = "general",
   contextId,
   contextContent,
-  onInsertToNote 
+  onInsertToNote,
+  defaultAgentOverride,
+  focusContext
 }: ChatDrawerProps) {
-  const [agentType, setAgentType] = useState<AgentType>(
-    CONTEXT_DEFAULT_AGENTS[contextType] || "executive-coach"
-  );
+  // Determine initial agent from override or context
+  const getInitialAgent = (): AgentType => {
+    if (defaultAgentOverride) return defaultAgentOverride;
+    const contextMapping: Record<string, AgentType> = {
+      dashboard: "research-assistant",
+      notes: "executive-coach",
+      focus: "executive-coach",
+      meeting: "executive-coach",
+      journal: "executive-coach",
+      general: "research-assistant",
+    };
+    return contextMapping[contextType] || "executive-coach";
+  };
+
+  const [agentType, setAgentType] = useState<AgentType>(getInitialAgent());
   const [conversationId, setConversationId] = useState<string>("");
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -70,12 +141,43 @@ export function ChatDrawer({
   const [isLoading, setIsLoading] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [isHydrated, setIsHydrated] = useState(false);
+  const [savedToNoteIds, setSavedToNoteIds] = useState<Set<string>>(new Set());
+  const [isSavingChat, setIsSavingChat] = useState(false);
+  
+  // Agent instructions & memory state
+  const [showInstructionsModal, setShowInstructionsModal] = useState(false);
+  const [showMemoryModal, setShowMemoryModal] = useState(false);
+  const [agentInstructions, setAgentInstructions] = useState<AgentInstruction | null>(null);
+  const [instructionsText, setInstructionsText] = useState("");
+  const [agentMemories, setAgentMemories] = useState<AiInsight[]>([]);
+  const [isSavingInstructions, setIsSavingInstructions] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const supabase = createClient();
 
   const agent = AGENTS[agentType];
+
+  // Update agent when defaultAgentOverride changes (screen switch)
+  useEffect(() => {
+    if (defaultAgentOverride && defaultAgentOverride !== agentType) {
+      // Save current chat to cache before switching
+      if (messages.length > 0) {
+        agentChatCache[agentType] = { conversationId, messages };
+      }
+      
+      setAgentType(defaultAgentOverride);
+      
+      // Restore from cache or start fresh
+      if (agentChatCache[defaultAgentOverride]) {
+        setConversationId(agentChatCache[defaultAgentOverride].conversationId);
+        setMessages(agentChatCache[defaultAgentOverride].messages);
+      } else {
+        setConversationId(crypto.randomUUID());
+        setMessages([]);
+      }
+    }
+  }, [defaultAgentOverride]);
 
   // Initialize on client only to avoid hydration mismatch
   useEffect(() => {
@@ -101,17 +203,85 @@ export function ChatDrawer({
     }
   }, [messages, conversationId, agentType]);
 
+  // Load agent instructions when agent changes
+  useEffect(() => {
+    loadAgentInstructions();
+  }, [agentType]);
+
+  const loadAgentInstructions = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data } = await supabase
+      .from("agent_instructions")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("agent_type", agentType)
+      .single();
+
+    if (data) {
+      setAgentInstructions(data);
+      setInstructionsText(data.instructions);
+    } else {
+      setAgentInstructions(null);
+      setInstructionsText("");
+    }
+  };
+
+  const saveAgentInstructions = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    setIsSavingInstructions(true);
+
+    if (agentInstructions) {
+      // Update existing
+      await supabase
+        .from("agent_instructions")
+        .update({ instructions: instructionsText })
+        .eq("id", agentInstructions.id);
+    } else {
+      // Create new
+      await supabase
+        .from("agent_instructions")
+        .insert({
+          user_id: user.id,
+          agent_type: agentType,
+          instructions: instructionsText,
+          is_active: true,
+        });
+    }
+
+    await loadAgentInstructions();
+    setIsSavingInstructions(false);
+    setShowInstructionsModal(false);
+  };
+
+  const loadAgentMemories = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // Load AI insights that were sourced from this agent's conversations
+    const { data } = await supabase
+      .from("ai_insights")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (data) {
+      setAgentMemories(data);
+    }
+  };
+
   // Switch agents - restore from cache or start fresh
   const handleAgentChange = (newAgent: AgentType) => {
-    // Save current state to cache
     if (messages.length > 0) {
       agentChatCache[agentType] = { conversationId, messages };
     }
     
-    // Switch to new agent
     setAgentType(newAgent);
     
-    // Restore from cache or start fresh
     if (agentChatCache[newAgent]) {
       setConversationId(agentChatCache[newAgent].conversationId);
       setMessages(agentChatCache[newAgent].messages);
@@ -121,14 +291,6 @@ export function ChatDrawer({
     }
     setInputValue("");
   };
-
-  // Update default agent when context changes
-  useEffect(() => {
-    const defaultAgent = CONTEXT_DEFAULT_AGENTS[contextType] || "executive-coach";
-    if (defaultAgent !== agentType && messages.length === 0) {
-      handleAgentChange(defaultAgent);
-    }
-  }, [contextType]);
 
   // Send message and stream response
   const sendMessage = async () => {
@@ -182,7 +344,6 @@ export function ChatDrawer({
         }
       }
       
-      // Save to DB
       await supabase.from("ai_messages").insert({
         conversation_id: conversationId,
         role: "assistant",
@@ -201,19 +362,16 @@ export function ChatDrawer({
     }
   };
 
-  // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Focus textarea when drawer opens
   useEffect(() => {
     if (isOpen) {
       setTimeout(() => textareaRef.current?.focus(), 100);
     }
   }, [isOpen]);
 
-  // Load conversation history (filtered by agent)
   const loadConversations = useCallback(async () => {
     const { data } = await supabase
       .from("ai_conversations")
@@ -227,14 +385,12 @@ export function ChatDrawer({
     }
   }, [supabase, agentType]);
 
-  // Reload conversations when agent changes or modal opens
   useEffect(() => {
     if (showHistoryModal) {
       loadConversations();
     }
   }, [showHistoryModal, agentType, loadConversations]);
 
-  // Load a specific conversation
   const loadConversation = async (conv: Conversation) => {
     const { data: messagesData } = await supabase
       .from("ai_messages")
@@ -251,7 +407,6 @@ export function ChatDrawer({
       setMessages(loadedMessages);
       setConversationId(conv.id);
       
-      // Update cache
       agentChatCache[agentType] = {
         conversationId: conv.id,
         messages: loadedMessages,
@@ -261,19 +416,14 @@ export function ChatDrawer({
     }
   };
 
-  // Start new conversation
   const startNewConversation = () => {
     const newId = crypto.randomUUID();
     setMessages([]);
     setConversationId(newId);
-    
-    // Clear cache for this agent
     delete agentChatCache[agentType];
-    
     setShowHistoryModal(false);
   };
 
-  // Delete conversation
   const deleteConversation = async (convId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     await supabase.from("ai_conversations").delete().eq("id", convId);
@@ -283,7 +433,6 @@ export function ChatDrawer({
     }
   };
 
-  // Rename conversation
   const renameConversation = async (convId: string) => {
     if (!editTitleValue.trim()) return;
     
@@ -299,14 +448,12 @@ export function ChatDrawer({
     setEditTitleValue("");
   };
 
-  // Copy message to clipboard
   const copyToClipboard = async (content: string, messageId: string) => {
     await navigator.clipboard.writeText(content);
     setCopiedId(messageId);
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  // Handle keyboard shortcuts
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -314,7 +461,6 @@ export function ChatDrawer({
     }
   };
 
-  // Format date
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     const now = new Date();
@@ -326,35 +472,155 @@ export function ChatDrawer({
     return date.toLocaleDateString();
   };
 
+  const saveMessageToNote = async (messageContent: string, messageId: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const folderName = agent.name;
+      let folderId: string | null = null;
+      
+      const { data: existingFolders } = await supabase
+        .from("folders")
+        .select("id, name, folder_type")
+        .eq("user_id", user.id);
+      
+      const matchingFolder = existingFolders?.find(
+        f => f.name === folderName && f.folder_type === "ai_conversations"
+      );
+      
+      if (matchingFolder) {
+        folderId = matchingFolder.id;
+      } else {
+        const { data: newFolder } = await supabase
+          .from("folders")
+          .insert({ 
+            user_id: user.id, 
+            name: folderName,
+            folder_type: "ai_conversations"
+          })
+          .select()
+          .single();
+        
+        folderId = newFolder?.id || null;
+      }
+
+      const plainTitle = messageContent.replace(/\*\*|__|\*|_|`/g, '').trim();
+      const title = plainTitle.slice(0, 50) + (plainTitle.length > 50 ? "..." : "");
+
+      const { error: noteErr } = await supabase
+        .from("notes")
+        .insert({
+          user_id: user.id,
+          title: title || "AI Response",
+          content: `<p>${markdownToHtml(messageContent)}</p>`,
+          note_type: "document",
+          folder_id: folderId,
+          tags: [],
+        });
+
+      if (!noteErr) {
+        setSavedToNoteIds(prev => new Set([...prev, messageId]));
+      }
+    } catch (error) {
+      console.error("Failed to save message to note:", error);
+    }
+  };
+
+  const saveChatToNote = async () => {
+    if (messages.length === 0) return;
+    setIsSavingChat(true);
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setIsSavingChat(false);
+        return;
+      }
+
+      const folderName = agent.name;
+      let folderId: string | null = null;
+      
+      const { data: existingFolders } = await supabase
+        .from("folders")
+        .select("id, name, folder_type")
+        .eq("user_id", user.id);
+      
+      const matchingFolder = existingFolders?.find(
+        f => f.name === folderName && f.folder_type === "ai_conversations"
+      );
+      
+      if (matchingFolder) {
+        folderId = matchingFolder.id;
+      } else {
+        const { data: newFolder } = await supabase
+          .from("folders")
+          .insert({ 
+            user_id: user.id, 
+            name: folderName,
+            folder_type: "ai_conversations"
+          })
+          .select()
+          .single();
+        
+        folderId = newFolder?.id || null;
+      }
+
+      const firstUserMsg = messages.find(m => m.role === "user");
+      const plainTitle = firstUserMsg 
+        ? firstUserMsg.content.replace(/\*\*|__|\*|_|`/g, '').trim()
+        : '';
+      const title = plainTitle 
+        ? plainTitle.slice(0, 50) + (plainTitle.length > 50 ? "..." : "")
+        : `Chat - ${new Date().toLocaleDateString()}`;
+
+      const content = messages.map(m => {
+        const label = m.role === "user" ? "<strong>You:</strong>" : `<strong>${agent.name}:</strong>`;
+        const htmlContent = markdownToHtml(m.content);
+        return `<p>${label}</p><p>${htmlContent}</p><hr/>`;
+      }).join("");
+
+      await supabase
+        .from("notes")
+        .insert({
+          user_id: user.id,
+          title,
+          content,
+          note_type: "document",
+          folder_id: folderId,
+          tags: [],
+        });
+    } catch (error) {
+      console.error("Failed to save chat to note:", error);
+    } finally {
+      setIsSavingChat(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
     <>
-      {/* Backdrop */}
-      <div 
-        className="fixed inset-0 bg-black/20 z-40"
-        onClick={onClose}
-      />
-      
-      {/* Drawer */}
       <div className="fixed right-0 top-0 h-full w-[420px] bg-white shadow-xl z-50 flex flex-col">
         {/* Header */}
         <div className="p-4 border-b border-[#E8DCC4] flex items-center justify-between bg-[#FAF8F5]">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">{agent.icon}</span>
+          <div className="flex items-center gap-2">
             <Select
               value={agentType}
               onValueChange={(value: AgentType) => handleAgentChange(value)}
             >
-              <SelectTrigger className="w-40 border-none bg-transparent font-medium">
+              <SelectTrigger className="w-44 border-none bg-transparent font-medium">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {Object.values(AGENTS)
-                  .filter(a => a.id !== "pattern-analyst")
+                  .filter(a => a.id !== "pattern-analyst" && a.id !== "therapist")
                   .map((a) => (
                     <SelectItem key={a.id} value={a.id}>
-                      {a.icon} {a.name}
+                      <span className="flex items-center gap-2">
+                        <span>{a.icon}</span>
+                        {a.name}
+                      </span>
                     </SelectItem>
                   ))}
               </SelectContent>
@@ -370,25 +636,65 @@ export function ChatDrawer({
             >
               <History className="w-4 h-4" />
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={startNewConversation}
-              className="h-8 w-8 p-0"
-              title="New chat"
-            >
-              <Plus className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onClose}
-              className="h-8 w-8 p-0"
-            >
-              <X className="w-4 h-4" />
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                  <MoreVertical className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onSelect={startNewConversation}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  New Chat
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onSelect={() => saveChatToNote()}
+                  disabled={messages.length === 0 || isSavingChat}
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  {isSavingChat ? "Saving..." : "Save Chat to Note"}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => setShowInstructionsModal(true)}>
+                  <Settings className="w-4 h-4 mr-2" />
+                  Agent Instructions
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => {
+                  loadAgentMemories();
+                  setShowMemoryModal(true);
+                }}>
+                  <Brain className="w-4 h-4 mr-2" />
+                  Agent Memory
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {onMinimize && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onMinimize}
+                className="h-8 w-8 p-0"
+                title="Minimize"
+              >
+                <Minus className="w-4 h-4" />
+              </Button>
+            )}
           </div>
         </div>
+
+        {/* Context indicator */}
+        {agentInstructions && agentInstructions.instructions && (
+          <div className="px-4 py-2 bg-[#F5F0E6] border-b border-[#E8DCC4] flex items-center gap-2 text-xs text-[#5C7A6B]">
+            <BookOpen className="w-3 h-3" />
+            <span>Custom instructions active</span>
+            <button 
+              onClick={() => setShowInstructionsModal(true)}
+              className="ml-auto text-[#2D5A47] hover:underline"
+            >
+              Edit
+            </button>
+          </div>
+        )}
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -403,19 +709,22 @@ export function ChatDrawer({
               <div
                 key={message.id}
                 className={cn(
-                  "flex flex-col",
+                  "flex flex-col mb-8",
                   message.role === "user" ? "items-end" : "items-start"
                 )}
               >
                 <div
                   className={cn(
-                    "max-w-[85%] rounded-lg px-4 py-2 group relative",
+                    "max-w-[85%] rounded-lg px-4 py-3 group relative",
                     message.role === "user"
-                      ? "bg-[#2D5A47] text-white"
+                      ? "bg-[#E8DCC4] text-[#1E3D32]"
                       : "bg-[#F5F0E6] text-[#1E3D32]"
                   )}
                 >
-                  <div className="whitespace-pre-wrap text-sm">{message.content}</div>
+                  <div 
+                    className="text-sm prose prose-sm prose-stone max-w-none [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_code]:bg-stone-100 [&_code]:px-1 [&_code]:rounded"
+                    dangerouslySetInnerHTML={{ __html: markdownToHtml(message.content) }}
+                  />
                   
                   {message.role === "assistant" && (
                     <div className="absolute -bottom-6 left-0 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
@@ -425,12 +734,18 @@ export function ChatDrawer({
                         onClick={() => copyToClipboard(message.content, message.id)}
                         className="h-6 px-2 text-xs text-[#8B9A8F]"
                       >
-                        {copiedId === message.id ? (
-                          <Check className="w-3 h-3 mr-1" />
-                        ) : (
-                          <Copy className="w-3 h-3 mr-1" />
-                        )}
+                        {copiedId === message.id ? <Check className="w-3 h-3 mr-1" /> : <Copy className="w-3 h-3 mr-1" />}
                         Copy
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => saveMessageToNote(message.content, message.id)}
+                        disabled={savedToNoteIds.has(message.id)}
+                        className="h-6 px-2 text-xs text-[#8B9A8F]"
+                      >
+                        {savedToNoteIds.has(message.id) ? <Check className="w-3 h-3 mr-1" /> : <FileText className="w-3 h-3 mr-1" />}
+                        {savedToNoteIds.has(message.id) ? "Saved" : "Note"}
                       </Button>
                       {onInsertToNote && (
                         <Button
@@ -514,9 +829,7 @@ export function ChatDrawer({
                     onClick={() => loadConversation(conv)}
                     className={cn(
                       "px-3 py-3 rounded-lg cursor-pointer group",
-                      conv.id === conversationId
-                        ? "bg-[#E8DCC4]"
-                        : "hover:bg-[#F5F0E6]"
+                      conv.id === conversationId ? "bg-[#E8DCC4]" : "hover:bg-[#F5F0E6]"
                     )}
                   >
                     {editingTitle === conv.id ? (
@@ -531,11 +844,7 @@ export function ChatDrawer({
                           className="h-8 text-sm"
                           autoFocus
                         />
-                        <Button
-                          size="sm"
-                          onClick={() => renameConversation(conv.id)}
-                          className="h-8"
-                        >
+                        <Button size="sm" onClick={() => renameConversation(conv.id)} className="h-8">
                           Save
                         </Button>
                       </div>
@@ -545,9 +854,7 @@ export function ChatDrawer({
                           <p className="text-sm font-medium text-[#1E3D32] truncate">
                             {conv.title || "Untitled conversation"}
                           </p>
-                          <p className="text-xs text-[#8B9A8F] mt-0.5">
-                            {formatDate(conv.created_at)}
-                          </p>
+                          <p className="text-xs text-[#8B9A8F] mt-0.5">{formatDate(conv.created_at)}</p>
                         </div>
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <Button
@@ -580,14 +887,106 @@ export function ChatDrawer({
           </div>
           
           <div className="pt-4 border-t">
-            <Button
-              onClick={startNewConversation}
-              className="w-full bg-[#2D5A47] hover:bg-[#1E3D32]"
-            >
+            <Button onClick={startNewConversation} className="w-full bg-[#2D5A47] hover:bg-[#1E3D32]">
               <Plus className="w-4 h-4 mr-2" />
               New Conversation
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Agent Instructions Modal */}
+      <Dialog open={showInstructionsModal} onOpenChange={setShowInstructionsModal}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="w-5 h-5" />
+              {agent.name} Instructions
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <p className="text-sm text-[#5C7A6B]">
+              Add custom instructions for {agent.name}. These will be included in every conversation.
+            </p>
+            
+            <Textarea
+              value={instructionsText}
+              onChange={(e) => setInstructionsText(e.target.value)}
+              placeholder={`Example: "Always be concise. Reference my job search context. Remind me to take breaks."`}
+              className="min-h-[150px] border-[#E8DCC4]"
+            />
+            
+            <p className="text-xs text-[#8B9A8F]">
+              💡 Tip: Include context like your current projects, preferred communication style, or specific areas you want help with.
+            </p>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowInstructionsModal(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={saveAgentInstructions}
+              disabled={isSavingInstructions}
+              className="bg-[#2D5A47] hover:bg-[#1E3D32]"
+            >
+              {isSavingInstructions ? "Saving..." : "Save Instructions"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Agent Memory Modal */}
+      <Dialog open={showMemoryModal} onOpenChange={setShowMemoryModal}>
+        <DialogContent className="max-w-lg max-h-[70vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Brain className="w-5 h-5" />
+              {agent.name} Memory
+            </DialogTitle>
+          </DialogHeader>
+          
+          <p className="text-sm text-[#5C7A6B]">
+            Insights and patterns learned from your conversations. These help personalize responses.
+          </p>
+          
+          <div className="flex-1 overflow-y-auto -mx-6 px-6 mt-4">
+            {agentMemories.length === 0 ? (
+              <div className="text-center py-8 text-[#8B9A8F]">
+                <Brain className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p>No memories yet</p>
+                <p className="text-xs mt-1">Memories are created as you chat</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {agentMemories.map((memory) => (
+                  <div key={memory.id} className="p-3 rounded-lg bg-[#F5F0E6] border border-[#E8DCC4]">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm text-[#1E3D32]">{memory.content}</p>
+                      <span className="text-xs text-[#8B9A8F] whitespace-nowrap">
+                        {formatDate(memory.created_at)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-[#E8DCC4] text-[#5C7A6B]">
+                        {memory.insight_type}
+                      </span>
+                      <span className="text-xs text-[#8B9A8F]">
+                        from {memory.source_type}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowMemoryModal(false)}>
+              Close
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>

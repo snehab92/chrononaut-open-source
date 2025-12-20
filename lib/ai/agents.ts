@@ -206,10 +206,11 @@ export function getAgent(agentType: AgentType): AgentConfig {
 
 // Default agent for different contexts
 export const CONTEXT_DEFAULT_AGENTS: Record<string, AgentType> = {
+  general: "research-assistant",
+  dashboard: "research-assistant",
   notes: "executive-coach",
   journal: "therapist",
   focus: "executive-coach",
   meeting: "executive-coach",
-  dashboard: "executive-coach",
-  research: "research-assistant",
+  task: "executive-coach",
 };

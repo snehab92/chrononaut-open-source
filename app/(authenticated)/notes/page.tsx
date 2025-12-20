@@ -5,8 +5,9 @@ import dynamic from "next/dynamic";
 import { createClient } from "@/lib/supabase/client";
 import { 
   Plus, FileText, Search, MoreVertical, Trash2, 
-  ChevronLeft, ChevronRight, Folder, FolderPlus,
-  ChevronDown, ChevronUp
+  ChevronLeft, ChevronRight, Folder, FolderOpen, Inbox,
+  ChevronDown, ChevronUp, Star, Filter, SortAsc, SortDesc,
+  Sparkles, BookOpen, Pencil, Tag, X
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -32,15 +33,14 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { NOTE_TEMPLATES, getTemplateForNote } from "@/lib/note-templates";
-import { Sparkles, MessageSquare } from "lucide-react";
+import { useChatDrawer } from "@/components/chat/chat-provider";
+import { AboutMeSection } from "@/components/notes/about-me-section";
 
-// Dynamically import RichEditor to avoid SSR issues with Tiptap
 const RichEditor = dynamic(() => import("@/components/rich-editor").then(mod => mod.RichEditor), {
   ssr: false,
   loading: () => <div className="p-4 text-[#8B9A8F]">Loading editor...</div>
 });
 
-// Matches existing schema enum
 type NoteType = "meeting" | "document" | "quick capture";
 
 interface Note {
@@ -50,6 +50,7 @@ interface Note {
   note_type: NoteType;
   tags: string[];
   folder_id: string | null;
+  is_starred: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -58,20 +59,8 @@ interface FolderType {
   id: string;
   name: string;
   parent_id: string | null;
+  folder_type: "notebook" | "ai_conversations";
 }
-
-interface AIConversation {
-  id: string;
-  title: string;
-  context_type: string | null;
-  last_message_at: string;
-}
-
-const NOTE_TYPE_LABELS: Record<NoteType, string> = {
-  meeting: "📅 Meeting",
-  document: "📄 Document",
-  "quick capture": "⚡ Quick Capture",
-};
 
 const NOTE_TYPE_ICONS: Record<NoteType, string> = {
   meeting: "📅",
@@ -79,7 +68,43 @@ const NOTE_TYPE_ICONS: Record<NoteType, string> = {
   "quick capture": "⚡",
 };
 
+const NOTE_TYPE_LABELS: Record<NoteType, string> = {
+  meeting: "📅 Meeting",
+  document: "📄 Document",
+  "quick capture": "⚡ Quick Capture",
+};
+
 const NOTE_TYPES: NoteType[] = ["meeting", "document", "quick capture"];
+
+// Label colors - auto-assigned based on label name hash
+const LABEL_COLORS = [
+  { bg: "bg-red-100", text: "text-red-700", border: "border-red-200" },
+  { bg: "bg-orange-100", text: "text-orange-700", border: "border-orange-200" },
+  { bg: "bg-amber-100", text: "text-amber-700", border: "border-amber-200" },
+  { bg: "bg-yellow-100", text: "text-yellow-700", border: "border-yellow-200" },
+  { bg: "bg-lime-100", text: "text-lime-700", border: "border-lime-200" },
+  { bg: "bg-green-100", text: "text-green-700", border: "border-green-200" },
+  { bg: "bg-emerald-100", text: "text-emerald-700", border: "border-emerald-200" },
+  { bg: "bg-teal-100", text: "text-teal-700", border: "border-teal-200" },
+  { bg: "bg-cyan-100", text: "text-cyan-700", border: "border-cyan-200" },
+  { bg: "bg-sky-100", text: "text-sky-700", border: "border-sky-200" },
+  { bg: "bg-blue-100", text: "text-blue-700", border: "border-blue-200" },
+  { bg: "bg-indigo-100", text: "text-indigo-700", border: "border-indigo-200" },
+  { bg: "bg-violet-100", text: "text-violet-700", border: "border-violet-200" },
+  { bg: "bg-purple-100", text: "text-purple-700", border: "border-purple-200" },
+  { bg: "bg-fuchsia-100", text: "text-fuchsia-700", border: "border-fuchsia-200" },
+  { bg: "bg-pink-100", text: "text-pink-700", border: "border-pink-200" },
+  { bg: "bg-rose-100", text: "text-rose-700", border: "border-rose-200" },
+];
+
+function getLabelColor(label: string) {
+  // Simple hash to get consistent color per label
+  let hash = 0;
+  for (let i = 0; i < label.length; i++) {
+    hash = label.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return LABEL_COLORS[Math.abs(hash) % LABEL_COLORS.length];
+}
 
 export default function NotesPage() {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -88,36 +113,42 @@ export default function NotesPage() {
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<NoteType | "all">("all");
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest" | "alpha">("newest");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
-  const [isFoldersExpanded, setIsFoldersExpanded] = useState(true);
   
-  // Folder dialog
+  const [isAiConversationsExpanded, setIsAiConversationsExpanded] = useState(true);
+  const [isNotebookExpanded, setIsNotebookExpanded] = useState(true);
+  
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   
-  // AI Conversations
-  const [aiConversations, setAiConversations] = useState<AIConversation[]>([]);
-  const [isAiConversationsExpanded, setIsAiConversationsExpanded] = useState(true);
-  const [selectedConversation, setSelectedConversation] = useState<AIConversation | null>(null);
-  const [conversationMessages, setConversationMessages] = useState<any[]>([]);
+  // Context menu for folder right-click
+  const [contextMenuFolder, setContextMenuFolder] = useState<string | null>(null);
+  const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 });
   
-  // Local state for editor (prevents lag)
+  // Rename folder dialog
+  const [renameFolderDialogOpen, setRenameFolderDialogOpen] = useState(false);
+  const [renameFolderId, setRenameFolderId] = useState<string | null>(null);
+  const [renameFolderValue, setRenameFolderValue] = useState("");
+  
   const [localTitle, setLocalTitle] = useState("");
   const [localContent, setLocalContent] = useState("");
-  
-  // Editor key to force re-render when note changes
   const [editorKey, setEditorKey] = useState(0);
+  
+  // Label input state
+  const [labelInputValue, setLabelInputValue] = useState("");
+  const [showLabelDropdown, setShowLabelDropdown] = useState(false);
+  const labelInputRef = useRef<HTMLInputElement>(null);
   
   const supabase = createClient();
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const { isOpen: isChatOpen } = useChatDrawer();
 
-  // Fetch notes, folders, and AI conversations on mount
   useEffect(() => {
     fetchNotes();
     fetchFolders();
-    fetchAiConversations();
   }, []);
 
   async function fetchNotes() {
@@ -151,41 +182,77 @@ export default function NotesPage() {
       .order("sort_order", { ascending: true });
 
     if (!error && data) {
-      setFolders(data);
-    }
-  }
-
-  async function fetchAiConversations() {
-    try {
-      const response = await fetch("/api/ai/chat/history");
-      if (response.ok) {
-        const data = await response.json();
-        setAiConversations(data.conversations || []);
+      // Clean up duplicate AI folders and Therapist folder
+      const aiConvFolders = data.filter(f => f.folder_type === "ai_conversations");
+      const execCoachFolders = aiConvFolders.filter(f => f.name === "Executive Coach");
+      const researchFolders = aiConvFolders.filter(f => f.name === "Research Assistant");
+      const therapistFolders = aiConvFolders.filter(f => f.name === "Therapist");
+      
+      // Delete duplicates and Therapist folders
+      if (execCoachFolders.length > 1) {
+        for (let i = 1; i < execCoachFolders.length; i++) {
+          await supabase.from("folders").delete().eq("id", execCoachFolders[i].id);
+        }
       }
-    } catch (error) {
-      console.error("Failed to fetch AI conversations:", error);
-    }
-  }
-
-  async function loadConversation(conv: AIConversation) {
-    setSelectedConversation(conv);
-    setSelectedNote(null);
-    try {
-      const response = await fetch(`/api/ai/chat/history?conversationId=${conv.id}`);
-      if (response.ok) {
-        const data = await response.json();
-        setConversationMessages(data.messages || []);
+      if (researchFolders.length > 1) {
+        for (let i = 1; i < researchFolders.length; i++) {
+          await supabase.from("folders").delete().eq("id", researchFolders[i].id);
+        }
       }
-    } catch (error) {
-      console.error("Failed to load conversation:", error);
+      // Delete ALL Therapist folders (moving to Journal screen)
+      for (const folder of therapistFolders) {
+        await supabase.from("folders").delete().eq("id", folder.id);
+      }
+      
+      // Keep only unique folders, excluding Therapist
+      const uniqueFolders = data.filter(f => {
+        if (f.name === "Therapist" && f.folder_type === "ai_conversations") return false;
+        if (f.folder_type !== "ai_conversations") return true;
+        if (f.name === "Executive Coach") return f.id === execCoachFolders[0]?.id;
+        if (f.name === "Research Assistant") return f.id === researchFolders[0]?.id;
+        return true;
+      });
+      
+      setFolders(uniqueFolders);
+      await ensureAiAgentFolders(user.id, uniqueFolders);
     }
   }
 
-  async function createNote(noteType: NoteType = "document") {
+  async function ensureAiAgentFolders(userId: string, existingFolders: FolderType[]) {
+    const agentFolders = [
+      { name: "Executive Coach" },
+      { name: "Research Assistant" },
+    ];
+    
+    for (const agentFolder of agentFolders) {
+      const exists = existingFolders.some(
+        f => f.name === agentFolder.name && f.folder_type === "ai_conversations"
+      );
+      
+      if (!exists) {
+        const { data: newFolder } = await supabase
+          .from("folders")
+          .insert({
+            user_id: userId,
+            name: agentFolder.name,
+            folder_type: "ai_conversations",
+          })
+          .select()
+          .single();
+        
+        if (newFolder) {
+          setFolders(prev => [...prev, newFolder]);
+        }
+      }
+    }
+  }
+
+  async function createNote(noteType: NoteType = "document", folderId?: string) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
     const template = getTemplateForNote(noteType);
+    const targetFolderId = folderId || (selectedFolder === "unfiled" ? null : selectedFolder);
 
     const { data, error } = await supabase
       .from("notes")
@@ -194,7 +261,8 @@ export default function NotesPage() {
         title: "Untitled",
         content: template,
         note_type: noteType,
-        folder_id: selectedFolder === "unfiled" ? null : selectedFolder,
+        folder_id: targetFolderId,
+        is_starred: false,
       })
       .select()
       .single();
@@ -217,6 +285,7 @@ export default function NotesPage() {
       .insert({
         user_id: user.id,
         name: newFolderName.trim(),
+        folder_type: "notebook",
       })
       .select()
       .single();
@@ -246,9 +315,41 @@ export default function NotesPage() {
       }
       fetchNotes();
     }
+    setContextMenuFolder(null);
   }
 
-  // Sync local state when selected note changes
+  async function renameFolder() {
+    if (!renameFolderId || !renameFolderValue.trim()) return;
+    
+    const { error } = await supabase
+      .from("folders")
+      .update({ name: renameFolderValue.trim() })
+      .eq("id", renameFolderId);
+
+    if (!error) {
+      setFolders(folders.map(f => 
+        f.id === renameFolderId ? { ...f, name: renameFolderValue.trim() } : f
+      ));
+    }
+    setRenameFolderDialogOpen(false);
+    setRenameFolderId(null);
+    setRenameFolderValue("");
+  }
+
+  async function toggleStar(noteId: string, currentValue: boolean) {
+    const { error } = await supabase
+      .from("notes")
+      .update({ is_starred: !currentValue })
+      .eq("id", noteId);
+
+    if (!error) {
+      setNotes(prev => prev.map(n => n.id === noteId ? { ...n, is_starred: !currentValue } : n));
+      if (selectedNote?.id === noteId) {
+        setSelectedNote({ ...selectedNote, is_starred: !currentValue });
+      }
+    }
+  }
+
   useEffect(() => {
     if (selectedNote) {
       setLocalTitle(selectedNote.title);
@@ -257,7 +358,6 @@ export default function NotesPage() {
     }
   }, [selectedNote?.id]);
 
-  // Debounced save to Supabase
   const debouncedSave = useCallback((updates: Partial<Note>) => {
     if (!selectedNote) return;
     
@@ -282,7 +382,6 @@ export default function NotesPage() {
     }, 500);
   }, [selectedNote, supabase]);
 
-  // Immediate save for dropdowns
   async function updateNoteImmediate(updates: Partial<Note>) {
     if (!selectedNote) return;
     setIsSaving(true);
@@ -295,7 +394,8 @@ export default function NotesPage() {
     if (!error) {
       const updatedNote = { ...selectedNote, ...updates };
       setSelectedNote(updatedNote);
-      setNotes(notes.map(n => n.id === selectedNote.id ? updatedNote : n));
+      // Use functional update to avoid stale closure
+      setNotes(prev => prev.map(n => n.id === selectedNote.id ? updatedNote : n));
     }
     setIsSaving(false);
   }
@@ -315,29 +415,187 @@ export default function NotesPage() {
     }
   }
 
-  // Strip HTML for preview
   function stripHtml(html: string): string {
-    return html.replace(/<[^>]*>/g, '').slice(0, 100);
+    return html.replace(/<[^>]*>/g, '');
   }
 
-  // Filter notes
-  const filteredNotes = notes.filter(note => {
-    const matchesSearch = 
-      note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      stripHtml(note.content || "").toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesType = typeFilter === "all" || note.note_type === typeFilter;
-    const matchesFolder = 
-      selectedFolder === null || 
-      (selectedFolder === "unfiled" ? !note.folder_id : note.folder_id === selectedFolder);
-    return matchesSearch && matchesType && matchesFolder;
-  });
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  };
 
-  const notesInFolder = (folderId: string | null) => 
-    notes.filter(n => n.folder_id === folderId).length;
+  // Get all unique labels from all notes (filter out nulls and empty)
+  const allLabels = Array.from(
+    new Set(
+      notes
+        .flatMap(n => n.tags || [])
+        .filter(tag => tag && tag.trim() !== '')
+    )
+  );
+  
+  // Get the current note's label (first tag, single-select)
+  const currentLabel = selectedNote?.tags?.[0] || null;
+  
+  // Filter labels for dropdown
+  const filteredLabels = allLabels.filter(label => 
+    label.toLowerCase().includes(labelInputValue.toLowerCase())
+  );
+  
+  // Set label on note
+  async function setNoteLabel(label: string | null) {
+    if (!selectedNote) return;
+    const newTags = label ? [label] : [];
+    await updateNoteImmediate({ tags: newTags } as Partial<Note>);
+    setLabelInputValue("");
+    setShowLabelDropdown(false);
+  }
+  
+  // Handle label input keydown
+  const handleLabelKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && labelInputValue.trim()) {
+      e.preventDefault();
+      setNoteLabel(labelInputValue.trim());
+    } else if (e.key === "Escape") {
+      setShowLabelDropdown(false);
+      setLabelInputValue("");
+    }
+  };
+
+  // Get folders by type
+  const aiConversationFolders = folders.filter(f => f.folder_type === "ai_conversations");
+  const notebookFolders = folders.filter(f => f.folder_type === "notebook");
+  
+  // Search filter function - searches title, content, and date
+  const matchesSearch = (note: Note) => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    const titleMatch = note.title.toLowerCase().includes(query);
+    const contentMatch = stripHtml(note.content || "").toLowerCase().includes(query);
+    const dateMatch = formatDate(note.updated_at).toLowerCase().includes(query);
+    return titleMatch || contentMatch || dateMatch;
+  };
+
+  // Type filter function
+  const matchesType = (note: Note) => {
+    return typeFilter === "all" || note.note_type === typeFilter;
+  };
+
+  // Sort function
+  const sortNotes = (notesToSort: Note[]) => {
+    return [...notesToSort].sort((a, b) => {
+      // Starred always first
+      if (a.is_starred && !b.is_starred) return -1;
+      if (!a.is_starred && b.is_starred) return 1;
+      
+      // Then apply sort order
+      if (sortOrder === "newest") return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+      if (sortOrder === "oldest") return new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime();
+      return a.title.localeCompare(b.title);
+    });
+  };
+
+  // Get notes for a specific folder with filters applied
+  const getFilteredNotesInFolder = (folderId: string) => {
+    return sortNotes(
+      notes.filter(n => n.folder_id === folderId && matchesSearch(n) && matchesType(n))
+    );
+  };
+
+  // Get notebook notes (All Notes or Unfiled)
+  const getNotebookNotes = (unfiledOnly: boolean) => {
+    return sortNotes(
+      notes.filter(n => {
+        // Exclude AI conversation notes
+        const isInAiFolder = aiConversationFolders.some(f => f.id === n.folder_id);
+        if (isInAiFolder) return false;
+        
+        // Filter by unfiled if needed
+        if (unfiledOnly && n.folder_id) return false;
+        
+        return matchesSearch(n) && matchesType(n);
+      })
+    );
+  };
+
+  // Render note item
+  const renderNoteItem = (note: Note) => {
+    const noteLabel = note.tags?.[0];
+    const labelColor = noteLabel ? getLabelColor(noteLabel) : null;
+    
+    return (
+      <div
+        key={note.id}
+        onClick={() => setSelectedNote(note)}
+        className={cn(
+          "px-3 py-2 cursor-pointer transition-colors group flex items-start gap-2 border-b border-[#E8DCC4]",
+          selectedNote?.id === note.id ? "bg-[#F5F0E6]" : "hover:bg-[#FAF8F5]"
+        )}
+      >
+        <span className="flex-shrink-0 mt-0.5">{NOTE_TYPE_ICONS[note.note_type]}</span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <h3 className="font-medium text-[#1E3D32] text-sm truncate max-w-[140px]">
+              {note.title || "Untitled"}
+            </h3>
+            {note.is_starred && <Star className="w-3 h-3 text-[#D4A84B] fill-[#D4A84B] flex-shrink-0" />}
+            {noteLabel && labelColor && (
+              <span className={cn(
+                "text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 whitespace-nowrap",
+                labelColor.bg, labelColor.text
+              )}>
+                {noteLabel}
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-[#8B9A8F] line-clamp-1">
+            {stripHtml(note.content || "").slice(0, 60) || "No content"}
+          </p>
+          <p className="text-xs text-[#8B9A8F] mt-0.5">
+            {formatDate(note.updated_at)}
+          </p>
+        </div>
+        
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="opacity-0 group-hover:opacity-100 h-6 w-6 p-0 flex-shrink-0"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreVertical className="w-3 h-3" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={(e) => {
+              e.stopPropagation();
+              toggleStar(note.id, note.is_starred);
+            }}>
+              <Star className={cn("w-4 h-4 mr-2", note.is_starred && "fill-[#D4A84B] text-[#D4A84B]")} />
+              {note.is_starred ? "Unstar" : "Star"}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                deleteNote(note.id);
+              }}
+              className="text-red-600"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    );
+  };
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] bg-[#FAF8F5]">
-      {/* Left Panel - Collapsible */}
+    <div className={cn(
+      "flex h-[calc(100vh-4rem)] bg-[#FAF8F5] transition-all duration-300",
+      isChatOpen && "mr-[420px]"
+    )}>
+      {/* Left Panel */}
       <div 
         className={cn(
           "border-r border-[#E8DCC4] flex flex-col bg-white transition-all duration-300",
@@ -406,152 +664,57 @@ export default function NotesPage() {
               <div className="relative mb-3">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8B9A8F]" />
                 <Input
-                  placeholder="Search notes..."
+                  placeholder="Search title, content, date..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-9 bg-[#F5F0E6] border-[#E8DCC4] focus:border-[#2D5A47]"
                 />
               </div>
 
-              {/* Type Filter Chips */}
-              <div className="flex flex-wrap gap-1">
-                <button
-                  onClick={() => setTypeFilter("all")}
-                  className={cn(
-                    "px-2 py-1 text-xs rounded-full transition-colors",
-                    typeFilter === "all"
-                      ? "bg-[#2D5A47] text-white"
-                      : "bg-[#F5F0E6] text-[#5C7A6B] hover:bg-[#E8DCC4]"
-                  )}
-                >
-                  All
-                </button>
-                {NOTE_TYPES.map((type) => (
-                  <button
-                    key={type}
-                    onClick={() => setTypeFilter(type)}
-                    className={cn(
-                      "px-2 py-1 text-xs rounded-full transition-colors",
-                      typeFilter === type
-                        ? "bg-[#2D5A47] text-white"
-                        : "bg-[#F5F0E6] text-[#5C7A6B] hover:bg-[#E8DCC4]"
-                    )}
-                  >
-                    {NOTE_TYPE_ICONS[type]} {type.charAt(0).toUpperCase() + type.slice(1)}
-                  </button>
-                ))}
+              {/* Filter & Sort */}
+              <div className="flex items-center gap-2">
+                <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as NoteType | "all")}>
+                  <SelectTrigger className="flex-1 h-8 text-xs bg-[#F5F0E6] border-[#E8DCC4]">
+                    <Filter className="w-3 h-3 mr-1" />
+                    <SelectValue placeholder="Filter" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    {NOTE_TYPES.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {NOTE_TYPE_ICONS[type]} {type.charAt(0).toUpperCase() + type.slice(1)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                
+                <Select value={sortOrder} onValueChange={(v) => setSortOrder(v as typeof sortOrder)}>
+                  <SelectTrigger className="w-28 h-8 text-xs bg-[#F5F0E6] border-[#E8DCC4]">
+                    {sortOrder === "newest" ? <SortDesc className="w-3 h-3 mr-1" /> : <SortAsc className="w-3 h-3 mr-1" />}
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="newest">Newest</SelectItem>
+                    <SelectItem value="oldest">Oldest</SelectItem>
+                    <SelectItem value="alpha">A-Z</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
-            {/* Folders Section */}
-            <div className="border-b border-[#E8DCC4]">
-              <button
-                onClick={() => setIsFoldersExpanded(!isFoldersExpanded)}
-                className="w-full p-3 flex items-center justify-between text-sm text-[#5C7A6B] hover:bg-[#FAF8F5]"
-              >
-                <span className="flex items-center gap-2">
-                  <Folder className="w-4 h-4" />
-                  Folders
-                </span>
-                {isFoldersExpanded ? (
-                  <ChevronUp className="w-4 h-4" />
-                ) : (
-                  <ChevronDown className="w-4 h-4" />
-                )}
-              </button>
+            {/* Scrollable content */}
+            <div className="flex-1 overflow-y-auto">
+              {/* About Me Section - above AI Conversations */}
+              <AboutMeSection />
               
-              {isFoldersExpanded && (
-                <div className="px-2 pb-2">
-                  <button
-                    onClick={() => setSelectedFolder(null)}
-                    className={cn(
-                      "w-full px-3 py-2 text-left text-sm rounded-md flex items-center justify-between",
-                      selectedFolder === null
-                        ? "bg-[#F5F0E6] text-[#1E3D32]"
-                        : "text-[#5C7A6B] hover:bg-[#FAF8F5]"
-                    )}
-                  >
-                    <span>All Notes</span>
-                    <span className="text-xs text-[#8B9A8F]">{notes.length}</span>
-                  </button>
-                  
-                  <button
-                    onClick={() => setSelectedFolder("unfiled")}
-                    className={cn(
-                      "w-full px-3 py-2 text-left text-sm rounded-md flex items-center justify-between",
-                      selectedFolder === "unfiled"
-                        ? "bg-[#F5F0E6] text-[#1E3D32]"
-                        : "text-[#5C7A6B] hover:bg-[#FAF8F5]"
-                    )}
-                  >
-                    <span>Unfiled</span>
-                    <span className="text-xs text-[#8B9A8F]">
-                      {notes.filter(n => !n.folder_id).length}
-                    </span>
-                  </button>
-                  
-                  {folders.map((folder) => (
-                    <div key={folder.id} className="group flex items-center">
-                      <button
-                        onClick={() => setSelectedFolder(folder.id)}
-                        className={cn(
-                          "flex-1 px-3 py-2 text-left text-sm rounded-md flex items-center justify-between",
-                          selectedFolder === folder.id
-                            ? "bg-[#F5F0E6] text-[#1E3D32]"
-                            : "text-[#5C7A6B] hover:bg-[#FAF8F5]"
-                        )}
-                      >
-                        <span className="flex items-center gap-2">
-                          <Folder className="w-3 h-3" />
-                          {folder.name}
-                        </span>
-                        <span className="text-xs text-[#8B9A8F]">
-                          {notesInFolder(folder.id)}
-                        </span>
-                      </button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="opacity-0 group-hover:opacity-100 h-6 w-6 p-0"
-                          >
-                            <MoreVertical className="w-3 h-3" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => deleteFolder(folder.id)}
-                            className="text-red-600"
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  ))}
-                  
-                  <button
-                    onClick={() => setFolderDialogOpen(true)}
-                    className="w-full px-3 py-2 text-left text-sm text-[#8B9A8F] hover:bg-[#FAF8F5] rounded-md flex items-center gap-2"
-                  >
-                    <FolderPlus className="w-3 h-3" />
-                    New Folder
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* AI Conversations Section */}
-            {aiConversations.length > 0 && (
+              {/* AI Conversations Section */}
               <div className="border-b border-[#E8DCC4]">
                 <button
                   onClick={() => setIsAiConversationsExpanded(!isAiConversationsExpanded)}
                   className="w-full p-3 flex items-center justify-between text-sm text-[#5C7A6B] hover:bg-[#FAF8F5]"
                 >
                   <span className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4" />
+                    <Sparkles className="w-4 h-4 text-[#D4A84B]" />
                     AI Conversations
                   </span>
                   {isAiConversationsExpanded ? (
@@ -562,159 +725,175 @@ export default function NotesPage() {
                 </button>
                 
                 {isAiConversationsExpanded && (
-                  <div className="px-2 pb-2 max-h-48 overflow-y-auto">
-                    {aiConversations.slice(0, 10).map((conv) => (
-                      <button
-                        key={conv.id}
-                        onClick={() => {
-                          loadConversation(conv);
-                          setSelectedConversation(conv);
-                        }}
-                        className={cn(
-                          "w-full px-3 py-2 text-left text-sm rounded-md flex items-center gap-2",
-                          selectedConversation?.id === conv.id
-                            ? "bg-[#F5F0E6] text-[#1E3D32]"
-                            : "text-[#5C7A6B] hover:bg-[#FAF8F5]"
-                        )}
-                      >
-                        <MessageSquare className="w-3 h-3 flex-shrink-0" />
-                        <span className="truncate">{conv.title}</span>
-                      </button>
-                    ))}
+                  <div className="pb-2">
+                    {aiConversationFolders.map(folder => {
+                      const folderNotes = getFilteredNotesInFolder(folder.id);
+                      const isSelected = selectedFolder === folder.id;
+                      return (
+                        <div key={folder.id}>
+                          <button
+                            onClick={() => setSelectedFolder(isSelected ? null : folder.id)}
+                            className={cn(
+                              "w-full px-3 py-2 text-left text-sm flex items-center gap-2 transition-colors",
+                              isSelected 
+                                ? "bg-[#F5F0E6] text-[#1E3D32]" 
+                                : "text-[#5C7A6B] hover:bg-[#FAF8F5]"
+                            )}
+                          >
+                            <Folder className="w-3 h-3" />
+                            <span className="flex-1">{folder.name}</span>
+                            <span className="text-xs text-[#8B9A8F]">{folderNotes.length}</span>
+                          </button>
+                          
+                          {isSelected && (
+                            <div>
+                              {folderNotes.length === 0 ? (
+                                <p className="px-6 py-2 text-xs text-[#8B9A8F]">No notes</p>
+                              ) : (
+                                folderNotes.map(note => renderNoteItem(note))
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
-            )}
 
-            {/* Note List */}
-            <div className="flex-1 overflow-y-auto">
-              {isLoading ? (
-                <div className="p-4 text-center text-[#8B9A8F]">Loading...</div>
-              ) : filteredNotes.length === 0 ? (
-                <div className="p-4 text-center text-[#8B9A8F]">
-                  {searchQuery || typeFilter !== "all" || selectedFolder 
-                    ? "No notes found" 
-                    : "No notes yet. Create one!"}
-                </div>
-              ) : (
-                filteredNotes.map((note) => (
-                  <div
-                    key={note.id}
-                    onClick={() => {
-                      setSelectedNote(note);
-                      setSelectedConversation(null);
-                    }}
-                    className={cn(
-                      "p-3 border-b border-[#E8DCC4] cursor-pointer transition-colors group",
-                      selectedNote?.id === note.id
-                        ? "bg-[#F5F0E6]"
-                        : "hover:bg-[#FAF8F5]"
-                    )}
+              {/* Notebook Section */}
+              <div>
+                <div className="flex items-center">
+                  <button
+                    onClick={() => setIsNotebookExpanded(!isNotebookExpanded)}
+                    className="flex-1 p-3 flex items-center justify-between text-sm text-[#5C7A6B] hover:bg-[#FAF8F5]"
                   >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span>{NOTE_TYPE_ICONS[note.note_type]}</span>
-                          <h3 className="font-medium text-[#1E3D32] truncate">
-                            {note.title || "Untitled"}
-                          </h3>
-                        </div>
-                        <p className="text-xs text-[#8B9A8F] mt-1 line-clamp-2">
-                          {stripHtml(note.content || "") || "No content"}
-                        </p>
-                        <p className="text-xs text-[#8B9A8F] mt-1">
-                          {new Date(note.updated_at).toLocaleDateString()}
-                        </p>
+                    <span className="flex items-center gap-2">
+                      <BookOpen className="w-4 h-4" />
+                      Notebook
+                    </span>
+                    {isNotebookExpanded ? (
+                      <ChevronUp className="w-4 h-4" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4" />
+                    )}
+                  </button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setFolderDialogOpen(true)}
+                    className="h-8 w-8 p-0 mr-2"
+                    title="New folder"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
+                
+                {isNotebookExpanded && (
+                  <div className="pb-2">
+                    {/* Unfiled - at top */}
+                    <button
+                      onClick={() => setSelectedFolder(selectedFolder === "unfiled" ? "__collapsed__" : "unfiled")}
+                      className={cn(
+                        "w-full px-3 py-2 text-left text-sm flex items-center gap-2 transition-colors",
+                        selectedFolder === "unfiled"
+                          ? "bg-[#F5F0E6] text-[#1E3D32]"
+                          : "text-[#5C7A6B] hover:bg-[#FAF8F5]"
+                      )}
+                    >
+                      <Inbox className="w-3 h-3" />
+                      <span className="flex-1">Unfiled</span>
+                      <span className="text-xs text-[#8B9A8F]">
+                        {getNotebookNotes(true).length}
+                      </span>
+                    </button>
+                    
+                    {selectedFolder === "unfiled" && (
+                      <div>
+                        {getNotebookNotes(true).length === 0 ? (
+                          <p className="px-6 py-2 text-xs text-[#8B9A8F]">No notes</p>
+                        ) : (
+                          getNotebookNotes(true).map(note => renderNoteItem(note))
+                        )}
                       </div>
-                      
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="opacity-0 group-hover:opacity-100 h-6 w-6 p-0"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <MoreVertical className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              deleteNote(note.id);
+                    )}
+                    
+                    {/* Notebook Folders - middle */}
+                    {notebookFolders.map(folder => {
+                      const folderNotes = getFilteredNotesInFolder(folder.id);
+                      const isSelected = selectedFolder === folder.id;
+                      return (
+                        <div key={folder.id}>
+                          <button
+                            onClick={() => setSelectedFolder(isSelected ? "__collapsed__" : folder.id)}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              setContextMenuFolder(folder.id);
+                              setContextMenuPos({ x: e.clientX, y: e.clientY });
                             }}
-                            className="text-red-600"
+                            className={cn(
+                              "w-full px-3 py-2 text-left text-sm flex items-center gap-2 transition-colors",
+                              isSelected 
+                                ? "bg-[#F5F0E6] text-[#1E3D32]" 
+                                : "text-[#5C7A6B] hover:bg-[#FAF8F5]"
+                            )}
                           >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
+                            <Folder className="w-3 h-3" />
+                            <span className="flex-1">{folder.name}</span>
+                            <span className="text-xs text-[#8B9A8F]">{folderNotes.length}</span>
+                          </button>
+                          
+                          {isSelected && (
+                            <div>
+                              {folderNotes.length === 0 ? (
+                                <p className="px-6 py-2 text-xs text-[#8B9A8F]">No notes</p>
+                              ) : (
+                                folderNotes.map(note => renderNoteItem(note))
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    
+                    {/* All Notes - at bottom */}
+                    <button
+                      onClick={() => setSelectedFolder(selectedFolder === null ? "__collapsed__" : null)}
+                      className={cn(
+                        "w-full px-3 py-2 text-left text-sm flex items-center gap-2 transition-colors",
+                        selectedFolder === null
+                          ? "bg-[#F5F0E6] text-[#1E3D32]"
+                          : "text-[#5C7A6B] hover:bg-[#FAF8F5]"
+                      )}
+                    >
+                      <FolderOpen className="w-3 h-3" />
+                      <span className="flex-1">All Notes</span>
+                      <span className="text-xs text-[#8B9A8F]">
+                        {getNotebookNotes(false).length}
+                      </span>
+                    </button>
+                    
+                    {selectedFolder === null && (
+                      <div>
+                        {getNotebookNotes(false).length === 0 ? (
+                          <p className="px-6 py-2 text-xs text-[#8B9A8F]">No notes</p>
+                        ) : (
+                          getNotebookNotes(false).map(note => renderNoteItem(note))
+                        )}
+                      </div>
+                    )}
                   </div>
-                ))
-              )}
+                )}
+              </div>
             </div>
           </>
         )}
       </div>
 
-      {/* Right Panel - Editor or Conversation View */}
+      {/* Right Panel - Editor */}
       <div className="flex-1 flex flex-col">
-        {selectedConversation ? (
-          /* AI Conversation View */
+        {selectedNote ? (
           <>
-            <div className="p-4 border-b border-[#E8DCC4] bg-white">
-              <div className="flex items-center gap-3">
-                <Sparkles className="w-5 h-5 text-[#2D5A47]" />
-                <div className="flex-1">
-                  <h2 className="text-lg font-serif font-semibold text-[#1E3D32]">
-                    {selectedConversation.title}
-                  </h2>
-                  <p className="text-xs text-[#8B9A8F]">
-                    {new Date(selectedConversation.last_message_at).toLocaleString()}
-                  </p>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setSelectedConversation(null);
-                    setConversationMessages([]);
-                  }}
-                >
-                  Close
-                </Button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#FAF8F5]">
-              {conversationMessages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={cn(
-                    "flex",
-                    msg.role === "user" ? "justify-end" : "justify-start"
-                  )}
-                >
-                  <div className={cn(
-                    "max-w-[80%] rounded-2xl px-4 py-2",
-                    msg.role === "user"
-                      ? "bg-[#2D5A47] text-white"
-                      : "bg-white text-[#1E3D32] shadow-sm"
-                  )}>
-                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                    <p className="text-xs opacity-60 mt-1">
-                      {new Date(msg.created_at).toLocaleTimeString()}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : selectedNote ? (
-          <>
-            {/* Editor Header */}
             <div className="p-4 border-b border-[#E8DCC4] bg-white">
               <div className="flex items-center gap-4">
                 <Input
@@ -726,6 +905,18 @@ export default function NotesPage() {
                   placeholder="Note title..."
                   className="text-xl font-serif font-semibold border-none bg-transparent p-0 h-auto focus-visible:ring-0 flex-1"
                 />
+                
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => toggleStar(selectedNote.id, selectedNote.is_starred)}
+                  className="h-8 w-8 p-0"
+                >
+                  <Star className={cn(
+                    "w-4 h-4",
+                    selectedNote.is_starred && "fill-[#D4A84B] text-[#D4A84B]"
+                  )} />
+                </Button>
                 
                 <Select
                   value={selectedNote.note_type}
@@ -754,7 +945,8 @@ export default function NotesPage() {
                     <SelectItem value="none">No folder</SelectItem>
                     {folders.map((folder) => (
                       <SelectItem key={folder.id} value={folder.id}>
-                        📁 {folder.name}
+                        {folder.folder_type === "ai_conversations" ? "✨ " : "📁 "}
+                        {folder.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -764,9 +956,133 @@ export default function NotesPage() {
                   <span className="text-xs text-[#8B9A8F]">Saving...</span>
                 )}
               </div>
+              
+              {/* Label row */}
+              <div className="flex items-center gap-2 mt-3">
+                <Tag className="w-4 h-4 text-[#8B9A8F]" />
+                {currentLabel ? (
+                  <div className="flex items-center gap-1">
+                    <span className={cn(
+                      "text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1",
+                      getLabelColor(currentLabel).bg,
+                      getLabelColor(currentLabel).text
+                    )}>
+                      {currentLabel}
+                      <button
+                        onClick={() => setNoteLabel(null)}
+                        className="hover:opacity-70"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                    <button
+                      onClick={() => setShowLabelDropdown(true)}
+                      className="text-xs text-[#8B9A8F] hover:text-[#5C7A6B]"
+                    >
+                      Change
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <button
+                      onClick={() => {
+                        setShowLabelDropdown(true);
+                        setTimeout(() => labelInputRef.current?.focus(), 0);
+                      }}
+                      className="text-xs text-[#8B9A8F] hover:text-[#5C7A6B] flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" />
+                      Add label
+                    </button>
+                  </div>
+                )}
+                
+                {/* Label dropdown */}
+                {showLabelDropdown && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-40" 
+                      onClick={() => {
+                        setShowLabelDropdown(false);
+                        setLabelInputValue("");
+                      }}
+                    />
+                    <div className="absolute left-16 top-24 z-50 bg-white rounded-lg shadow-lg border border-[#E8DCC4] p-2 min-w-[200px]">
+                      <Input
+                        ref={labelInputRef}
+                        value={labelInputValue}
+                        onChange={(e) => setLabelInputValue(e.target.value)}
+                        onKeyDown={handleLabelKeyDown}
+                        placeholder="Type label & press Enter"
+                        className="h-8 text-sm mb-2"
+                        autoFocus
+                      />
+                      {filteredLabels.length > 0 && (
+                        <div className="max-h-32 overflow-y-auto">
+                          <p className="text-xs text-[#8B9A8F] px-2 mb-1">Existing labels</p>
+                          {filteredLabels.map(label => {
+                            const color = getLabelColor(label);
+                            return (
+                              <div
+                                key={label}
+                                className="w-full px-2 py-1.5 text-left text-sm hover:bg-[#F5F0E6] rounded flex items-center justify-between group/label"
+                              >
+                                <button
+                                  onClick={() => setNoteLabel(label)}
+                                  className="flex items-center gap-2 flex-1"
+                                >
+                                  <span className={cn(
+                                    "text-xs px-2 py-0.5 rounded-full",
+                                    color.bg, color.text
+                                  )}>
+                                    {label}
+                                  </span>
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    // Remove this label from all notes that have it
+                                    notes.forEach(async (n) => {
+                                      if (n.tags?.includes(label)) {
+                                        const newTags = n.tags.filter(t => t !== label);
+                                        await supabase.from("notes").update({ tags: newTags }).eq("id", n.id);
+                                      }
+                                    });
+                                    // Update local state
+                                    setNotes(prev => prev.map(n => 
+                                      n.tags?.includes(label) 
+                                        ? { ...n, tags: n.tags.filter(t => t !== label) }
+                                        : n
+                                    ));
+                                    if (selectedNote?.tags?.includes(label)) {
+                                      setSelectedNote({ ...selectedNote, tags: selectedNote.tags.filter(t => t !== label) });
+                                    }
+                                  }}
+                                  className="opacity-0 group-hover/label:opacity-100 p-1 hover:bg-red-100 rounded text-red-500"
+                                  title="Delete label from all notes"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {labelInputValue && !filteredLabels.includes(labelInputValue) && (
+                        <button
+                          onClick={() => setNoteLabel(labelInputValue.trim())}
+                          className="w-full px-2 py-1.5 text-left text-sm hover:bg-[#F5F0E6] rounded flex items-center gap-2 border-t border-[#E8DCC4] mt-1 pt-2"
+                        >
+                          <Plus className="w-3 h-3" />
+                          Create "{labelInputValue}"
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
 
-            {/* Rich Editor */}
             <div className="flex-1 overflow-hidden">
               <RichEditor
                 key={editorKey}
@@ -811,6 +1127,64 @@ export default function NotesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Rename Folder Dialog */}
+      <Dialog open={renameFolderDialogOpen} onOpenChange={setRenameFolderDialogOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Rename Folder</DialogTitle>
+          </DialogHeader>
+          <Input
+            value={renameFolderValue}
+            onChange={(e) => setRenameFolderValue(e.target.value)}
+            placeholder="Folder name..."
+            onKeyDown={(e) => e.key === "Enter" && renameFolder()}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameFolderDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={renameFolder} className="bg-[#2D5A47] hover:bg-[#1E3D32]">
+              Rename
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Context Menu for Folders */}
+      {contextMenuFolder && (
+        <>
+          <div 
+            className="fixed inset-0 z-40" 
+            onClick={() => setContextMenuFolder(null)}
+          />
+          <div
+            className="fixed z-50 bg-white rounded-lg shadow-lg border border-[#E8DCC4] py-1 min-w-[160px]"
+            style={{ left: contextMenuPos.x, top: contextMenuPos.y }}
+          >
+            <button
+              onClick={() => {
+                const folder = folders.find(f => f.id === contextMenuFolder);
+                setRenameFolderValue(folder?.name || "");
+                setRenameFolderId(contextMenuFolder);
+                setRenameFolderDialogOpen(true);
+                setContextMenuFolder(null);
+              }}
+              className="w-full px-3 py-2 text-left text-sm hover:bg-[#F5F0E6] flex items-center gap-2"
+            >
+              <Pencil className="w-4 h-4" />
+              Rename
+            </button>
+            <button
+              onClick={() => deleteFolder(contextMenuFolder)}
+              className="w-full px-3 py-2 text-left text-sm hover:bg-[#F5F0E6] flex items-center gap-2 text-red-600"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

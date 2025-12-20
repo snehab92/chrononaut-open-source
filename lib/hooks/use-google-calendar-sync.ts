@@ -46,13 +46,30 @@ export function useGoogleCalendarSync() {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        console.error("Google Calendar sync failed:", error);
-        return { success: false, errors: [error.error || "Sync failed"] };
+        // Handle different error cases
+        let errorMessage = "Sync failed";
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.details || `HTTP ${response.status}`;
+          console.warn("Google Calendar sync failed:", errorMessage);
+        } catch {
+          // Response wasn't JSON
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+          console.warn("Google Calendar sync failed (non-JSON response):", errorMessage);
+        }
+        
+        // Don't treat "not connected" as a hard error
+        if (response.status === 400) {
+          setIsConnected(false);
+          return { success: false, errors: ["Google Calendar not connected"] };
+        }
+        
+        return { success: false, errors: [errorMessage] };
       }
 
       const result: SyncResult = await response.json();
       setLastSyncedAt(new Date());
+      setIsConnected(true);
       
       console.log("Google Calendar sync complete:", result.synced);
       return result;

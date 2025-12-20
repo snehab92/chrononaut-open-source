@@ -8,6 +8,8 @@ import { EventList } from "./event-list";
 import { MetricsPanel } from "./metrics-panel";
 import { useTaskContext } from "./task-context";
 import { useCalendarContext } from "./calendar-context";
+import { useChatDrawer } from "@/components/chat/chat-provider";
+import { cn } from "@/lib/utils";
 
 interface DashboardClientProps {
   initialTasks: Task[];
@@ -50,40 +52,47 @@ export function DashboardClient({
   workouts,
   journalEntries,
 }: DashboardClientProps) {
+  const { isOpen: isChatOpen } = useChatDrawer();
+
   return (
     <TaskProvider initialTasks={initialTasks} isConnected={isTickTickConnected}>
       <CalendarProvider initialEvents={initialEvents} isConnected={isGoogleCalendarConnected}>
-        {/* Metrics Panel */}
-        <MetricsPanel 
-          isWhoopConnected={isWhoopConnected}
-          healthMetrics={healthMetrics}
-          workouts={workouts}
-          journalEntries={journalEntries}
-        />
-        
-        {/* Sync Status */}
-        <div className="mt-6">
-          <CombinedSyncStatus />
-        </div>
-        
-        {/* Tasks and Calendar Grid */}
-        <div className="grid gap-5 lg:grid-cols-3 mt-2">
-          {/* Today's Tasks */}
-          <div className="p-6 rounded-2xl bg-gradient-to-br from-white to-[#F5F0E6] border border-[#E8DCC4] shadow-sm">
-            <div className="mb-4">
-              <h2 className="font-serif text-lg font-semibold text-[#1E3D32]">Tasks</h2>
-              <TaskCount isConnected={isTickTickConnected} />
-            </div>
-            <TaskList isConnected={isTickTickConnected} />
+        <div className={cn(
+          "transition-all duration-300",
+          isChatOpen && "mr-[420px]"
+        )}>
+          {/* Metrics Panel */}
+          <MetricsPanel 
+            isWhoopConnected={isWhoopConnected}
+            healthMetrics={healthMetrics}
+            workouts={workouts}
+            journalEntries={journalEntries}
+          />
+          
+          {/* Sync Status */}
+          <div className="mt-6">
+            <CombinedSyncStatus />
           </div>
-
-          {/* Calendar */}
-          <div className="lg:col-span-2 p-6 rounded-2xl bg-gradient-to-br from-white to-[#F5F0E6] border border-[#E8DCC4] shadow-sm">
-            <div className="mb-4">
-              <h2 className="font-serif text-lg font-semibold text-[#1E3D32]">Calendar</h2>
-              <EventCount isConnected={isGoogleCalendarConnected} />
+          
+          {/* Tasks and Calendar Grid */}
+          <div className="grid gap-5 lg:grid-cols-3 mt-2">
+            {/* Today's Tasks */}
+            <div className="p-6 rounded-2xl bg-gradient-to-br from-white to-[#F5F0E6] border border-[#E8DCC4] shadow-sm">
+              <div className="mb-4">
+                <h2 className="font-serif text-lg font-semibold text-[#1E3D32]">Tasks</h2>
+                <TaskCount isConnected={isTickTickConnected} />
+              </div>
+              <TaskList isConnected={isTickTickConnected} />
             </div>
-            <EventList isConnected={isGoogleCalendarConnected} />
+
+            {/* Calendar */}
+            <div className="lg:col-span-2 p-6 rounded-2xl bg-gradient-to-br from-white to-[#F5F0E6] border border-[#E8DCC4] shadow-sm">
+              <div className="mb-4">
+                <h2 className="font-serif text-lg font-semibold text-[#1E3D32]">Calendar</h2>
+                <EventCount isConnected={isGoogleCalendarConnected} />
+              </div>
+              <EventList isConnected={isGoogleCalendarConnected} />
+            </div>
           </div>
         </div>
       </CalendarProvider>

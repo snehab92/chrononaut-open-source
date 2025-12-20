@@ -20,11 +20,9 @@ import {
   LogOut,
   Settings,
   Compass,
-  MessageSquare,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { useChatDrawer } from "@/components/chat/chat-provider";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, shortcut: "⌘D" },
@@ -44,18 +42,6 @@ export function AppShell({ children, user }: AppShellProps) {
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  
-  // Use the chat drawer context
-  const { openChat } = useChatDrawer();
-
-  // Determine context from current path
-  const getContext = () => {
-    if (pathname.includes("/notes")) return { type: "general" as const };
-    if (pathname.includes("/journal")) return { type: "journal" as const };
-    if (pathname.includes("/focus")) return { type: "focus" as const };
-    if (pathname.includes("/meeting")) return { type: "meeting" as const };
-    return { type: "general" as const };
-  };
 
   const handleLogout = async () => {
     const supabase = createClient();
@@ -71,10 +57,6 @@ export function AppShell({ children, user }: AppShellProps) {
       return email[0].toUpperCase();
     }
     return "?";
-  };
-
-  const handleOpenChat = () => {
-    openChat(getContext());
   };
 
   const NavContent = ({ mobile = false }: { mobile?: boolean }) => (
@@ -196,35 +178,6 @@ export function AppShell({ children, user }: AppShellProps) {
         <div className="flex-1 h-px bg-gradient-to-r from-transparent via-[#D4C5A9] to-transparent" />
       </div>
 
-      {/* AI Chat Button */}
-      <TooltipProvider delayDuration={0}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="outline"
-              onClick={handleOpenChat}
-              className={cn(
-                "mb-4 gap-2 border-[#2D5A47] bg-[#2D5A47]/10 hover:bg-[#2D5A47]/20 text-[#2D5A47] transition-all duration-200",
-                collapsed && !mobile ? "w-10 h-10 p-0" : "w-full justify-start h-11"
-              )}
-            >
-              <MessageSquare className="h-4 w-4" />
-              {(!collapsed || mobile) && <span className="font-medium">AI Coach</span>}
-              {(!collapsed || mobile) && (
-                <kbd className="ml-auto text-xs text-[#2D5A47]/70 bg-white/60 px-2 py-0.5 rounded-md border border-[#2D5A47]/30">
-                  ⌘/
-                </kbd>
-              )}
-            </Button>
-          </TooltipTrigger>
-          {collapsed && !mobile && (
-            <TooltipContent side="right" className="bg-[#1E3D32] text-[#E8DCC4] border-none">
-              AI Coach (⌘/)
-            </TooltipContent>
-          )}
-        </Tooltip>
-      </TooltipProvider>
-
       {/* User Profile Card */}
       {(!collapsed || mobile) && user && (
         <div className="mb-4 p-3 rounded-xl bg-gradient-to-br from-[#F5F0E6] to-[#FDFBF7] border border-[#E8DCC4]">
@@ -333,15 +286,6 @@ export function AppShell({ children, user }: AppShellProps) {
             <Compass className="h-5 w-5 text-[#2D5A47]" />
             <span className="font-serif font-semibold text-[#1E3D32]">Chrononaut</span>
           </div>
-          {/* Mobile AI Chat button */}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleOpenChat}
-            className="ml-auto text-[#2D5A47]"
-          >
-            <MessageSquare className="h-5 w-5" />
-          </Button>
         </header>
 
         {/* Main Content */}

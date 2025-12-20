@@ -16,7 +16,7 @@
  * - 'error': Sync failed, needs retry
  */
 
-import { TickTickClient, TickTickTask } from './client';
+import { TickTickClient, TickTickTask, TickTickProject, TickTickSection } from './client';
 import { createClient } from '@/lib/supabase/server';
 
 // Types
@@ -29,6 +29,8 @@ export interface LocalTask {
   user_id: string;
   ticktick_id: string | null;
   ticktick_list_id: string | null;
+  ticktick_list_name: string | null;
+  ticktick_section_name: string | null;
   sync_status: SyncStatus;
   last_synced_at: string | null;
   title: string;
@@ -137,8 +139,29 @@ export async function pullTasksFromTickTick(
     // 1. Fetch all tasks from TickTick
     const ticktickData = await client.getAllTasks();
     const remoteTasks = ticktickData.syncTaskBean.update;
+    const projects = ticktickData.projectProfiles || [];
 
-    // 2. Get existing local tasks with ticktick_ids
+    // Create lookup map for project names
+    const projectNameMap = new Map<string, string>();
+    projects.forEach((p: TickTickProject) => {
+      projectNameMap.set(p.id, p.name);
+    });
+
+    // 2. Fetch sections for all projects to get section names
+    const sectionNameMap = new Map<string, string>();
+    for (const project of projects) {
+      try {
+        const sections = await client.getSections(project.id);
+        sections.forEach((s: TickTickSection) => {
+          sectionNameMap.set(s.id, s.name);
+        });
+      } catch (error) {
+        // Some projects might not have sections, ignore errors
+        console.log(`Could not fetch sections for project ${project.id}:`, error);
+      }
+    }
+
+    // 3. Get existing local tasks with ticktick_ids
     const { data: localTasks, error: fetchError } = await supabase
       .from('tasks')
       .select('*')
@@ -160,10 +183,12 @@ export async function pullTasksFromTickTick(
       }
     });
 
-    // 3. Process each remote task
+    // 4. Process each remote task
     for (const remoteTask of remoteTasks) {
       try {
         const localTask = localTaskMap.get(remoteTask.id);
+        const listName = projectNameMap.get(remoteTask.projectId) || null;
+        const sectionName = remoteTask.columnId ? sectionNameMap.get(remoteTask.columnId) || null : null;
         
         if (!localTask) {
           // NEW: Task doesn't exist locally, create it
@@ -173,6 +198,8 @@ export async function pullTasksFromTickTick(
               user_id: userId,
               ticktick_id: remoteTask.id,
               ticktick_list_id: remoteTask.projectId,
+              ticktick_list_name: listName,
+              ticktick_section_name: sectionName,
               title: remoteTask.title,
               content: remoteTask.content || remoteTask.desc || null,
               priority: mapTickTickPriority(remoteTask.priority),
@@ -199,16 +226,16 @@ export async function pullTasksFromTickTick(
               // Remote wins - conflict, but we use last-write-wins
               result.conflicts++;
               // Update local with remote data
-              await updateLocalFromRemote(supabase, localTask.id, remoteTask);
+              await updateLocalFromRemote(supabase, localTask.id, remoteTask, listName, sectionName);
               result.pulled++;
             }
             // Otherwise local wins - we'll push later
           } else {
             // No pending local changes - safe to update from remote
-            const needsUpdate = hasRemoteChanges(localTask, remoteTask);
+            const needsUpdate = hasRemoteChanges(localTask, remoteTask, listName, sectionName);
             
             if (needsUpdate) {
-              await updateLocalFromRemote(supabase, localTask.id, remoteTask);
+              await updateLocalFromRemote(supabase, localTask.id, remoteTask, listName, sectionName);
               result.pulled++;
             }
           }
@@ -218,7 +245,7 @@ export async function pullTasksFromTickTick(
       }
     }
 
-    // 4. Mark tasks deleted in TickTick (exist locally but not in remote)
+    // 5. Mark tasks deleted in TickTick (exist locally but not in remote)
     const remoteTaskIds = new Set(remoteTasks.map((t: TickTickTask) => t.id));
     for (const [ticktickId, localTask] of localTaskMap) {
       if (!remoteTaskIds.has(ticktickId) && !localTask.completed) {
@@ -378,19 +405,28 @@ function mapTickTickPriority(ticktickPriority: number): number {
   }
 }
 
-function hasRemoteChanges(local: LocalTask, remote: TickTickTask): boolean {
+function hasRemoteChanges(
+  local: LocalTask, 
+  remote: TickTickTask,
+  listName: string | null,
+  sectionName: string | null
+): boolean {
   return (
     local.title !== remote.title ||
     local.completed !== (remote.status === 2) ||
     local.due_date !== remote.dueDate ||
-    mapTickTickPriority(remote.priority) !== local.priority
+    mapTickTickPriority(remote.priority) !== local.priority ||
+    local.ticktick_list_name !== listName ||
+    local.ticktick_section_name !== sectionName
   );
 }
 
 async function updateLocalFromRemote(
   supabase: any,
   localTaskId: string,
-  remote: TickTickTask
+  remote: TickTickTask,
+  listName: string | null,
+  sectionName: string | null
 ): Promise<void> {
   await supabase
     .from('tasks')
@@ -401,6 +437,8 @@ async function updateLocalFromRemote(
       due_date: remote.dueDate || null,
       completed: remote.status === 2,
       completed_at: remote.status === 2 ? new Date().toISOString() : null,
+      ticktick_list_name: listName,
+      ticktick_section_name: sectionName,
       sync_status: 'synced',
       last_synced_at: new Date().toISOString(),
     })
