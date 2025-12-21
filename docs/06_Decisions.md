@@ -658,3 +658,626 @@ CONTEXT_DEFAULT_AGENTS = {
 ---
 
 *End of December 13, 2025 decisions*
+
+---
+
+## December 17-19, 2025
+
+### ABOUT-001: About Me Files Architecture
+
+**Context:** Need a way for users to upload context files (assessments, feedback, inspiration) that AI agents can reference during conversations.
+
+**Decision:** Create `about_me_files` table with per-agent targeting and category classification.
+
+**Schema:**
+```sql
+about_me_files (
+  id uuid primary key,
+  user_id uuid references profiles,
+  filename text not null,
+  file_type text, -- pdf, docx, md, txt
+  content text, -- extracted text content
+  category text, -- assessment, feedback, inspiration, context
+  target_agents text[], -- which agents can access
+  created_at timestamptz,
+  updated_at timestamptz
+)
+```
+
+**Rationale:**
+- Storing extracted text (not raw binary) enables AI to read content directly
+- Category field allows filtering (e.g., only assessments for Growth metrics)
+- `target_agents[]` array enables per-file agent targeting
+- Auto-detection of assessment types reduces user friction
+
+**Auto-categorization logic:**
+```typescript
+if (filename includes "self-compassion") → category: "assessment"
+if (filename includes "values") → category: "assessment"
+if (filename includes "clifton" or "strengths") → category: "assessment"
+if (filename includes "360" or "feedback") → category: "feedback"
+else → category: "context"
+```
+
+**Consequences:**
+- ✅ AI agents have rich personal context
+- ✅ Users control which agents see which files
+- ✅ Assessment data can populate Growth metrics
+- ⚠️ Large files may hit text extraction limits
+- 📝 V2: Add file size limits and chunking for large documents
+
+---
+
+### AI-006: Agent Instructions (Custom Prompts)
+
+**Context:** Users need ability to customize agent behavior without modifying code.
+
+**Decision:** Create `agent_instructions` table for per-agent custom system prompts.
+
+**Schema:**
+```sql
+agent_instructions (
+  id uuid primary key,
+  user_id uuid references profiles,
+  agent_type text not null,
+  instructions text not null,
+  is_active boolean default true,
+  created_at timestamptz,
+  updated_at timestamptz,
+  unique(user_id, agent_type)
+)
+```
+
+**UI location:** Chat drawer → 3-dot menu → "Agent Instructions"
+
+**Prompt injection:**
+```typescript
+const systemPrompt = `
+${agent.systemPrompt}
+
+<user_instructions>
+${userInstructions}
+</user_instructions>
+`;
+```
+
+**Rationale:**
+- Mirrors Claude.ai "Project Instructions" pattern (familiar to user)
+- Per-agent customization (different instructions for Coach vs Research)
+- `is_active` flag allows disabling without deleting
+- Unique constraint prevents duplicate instructions per agent
+
+**Consequences:**
+- ✅ Personalized agent behavior
+- ✅ Instructions persist across sessions
+- ✅ Visual indicator when active
+- ⚠️ Bad instructions could degrade responses
+- 📝 Could add instruction templates in V2
+
+---
+
+### AI-007: Screen-Aware Agent Context
+
+**Context:** Different screens benefit from different default agents, and chat should minimize when switching screens.
+
+**Decision:** Implement automatic agent switching based on current route, with auto-minimize on navigation.
+
+**Implementation:**
+```typescript
+// ChatProvider detects route changes
+useEffect(() => {
+  if (prevPathnameRef.current !== pathname && isOpen) {
+    setIsMinimized(true);
+    setIsOpen(false);
+  }
+  prevPathnameRef.current = pathname;
+}, [pathname, isOpen]);
+
+// Default agent per screen
+const mapping = {
+  dashboard: "research-assistant",
+  notes: "executive-coach",
+  focus: "executive-coach",
+  meeting: "executive-coach",
+  journal: "executive-coach", // Therapist embedded in journal
+};
+```
+
+**Rationale:**
+- Dashboard → Research: Quick lookups, fact-finding
+- Notes/Focus/Meeting → Coach: Work tasks, execution
+- Journal → Coach (not Therapist): Therapist will be embedded directly in Journal screen
+- Auto-minimize prevents chat covering new screen content
+- Restoring chat brings up appropriate agent for current context
+
+**Consequences:**
+- ✅ Reduced cognitive load (right agent auto-selected)
+- ✅ Cleaner UX on screen transitions
+- ✅ User can still manually switch agents
+- 📝 Therapist removed from chat drawer (Journal-only)
+
+---
+
+### FOCUS-001: Focus Screen Architecture
+
+**Context:** Need a dedicated focus mode with task management, timer, notes, and calendar integration.
+
+**Decision:** Two-panel layout with collapsible sidebar, state managed via React Context.
+
+**Layout:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Focus                                          [Collapse]  │
+├──────────────┬──────────────────────────────────────────────┤
+│ TASK LIST    │                                              │
+│ Today/Week   │           FOCUS TIMER                        │
+│ [Task 1]     │           00:45:30                           │
+│ [Task 2]     │           "Current Task Title"               │
+│ [Task 3]     │           [Pause] [Complete]                 │
+├──────────────┤──────────────────────────────────────────────┤
+│ CALENDAR     │                                              │
+│ Today's      │           NOTE EDITOR                        │
+│ Events       │           [Select note ▼]                    │
+│              │           Rich text content...               │
+├──────────────┤                                              │
+│ ANALYTICS    │                                              │
+│ Focus stats  │                                              │
+└──────────────┴──────────────────────────────────────────────┘
+```
+
+**State management:**
+```typescript
+FocusSessionContext provides:
+- selectedTask: FocusTask | null
+- selectedNote: Note | null
+- isTimerRunning: boolean
+- timerSeconds: number
+- focusingStartedAt: Date | null
+```
+
+**Rationale:**
+- Collapsible sidebar for distraction-free writing
+- Task list mirrors Dashboard for consistency
+- Timer tied to specific task (not generic pomodoro)
+- Note editor allows capturing thoughts while working
+- Calendar prevents time blindness
+
+**Consequences:**
+- ✅ Single-screen focus experience
+- ✅ Timer tracks actual task time
+- ✅ Notes captured in context
+- ⚠️ Complex state management (many interacting components)
+- 📝 Session data not yet persisted to DB
+
+---
+
+### FOCUS-002: AI Task Analysis API
+
+**Context:** Need AI-powered time estimates and prioritization for tasks.
+
+**Decision:** Create `/api/ai/analyze-tasks` endpoint that returns structured analysis per task.
+
+**Request:**
+```typescript
+POST /api/ai/analyze-tasks
+{
+  tasks: Array<{
+    id: string,
+    title: string,
+    content: string | null,
+    priority: number,
+    dueDate: string | null
+  }>
+}
+```
+
+**Response:**
+```typescript
+{
+  analyses: Array<{
+    taskId: string,
+    timeEstimate: {
+      userEstimate: number | null,
+      adjustedEstimate: number,
+      aiEstimate: number,
+      displayMinutes: number,
+      confidence: "none" | "low" | "medium" | "high",
+      source: "user_adjusted" | "user_raw" | "ai_guess",
+      explanation: string,
+      factors: string[]
+    },
+    prioritization: {
+      suggestedOrder: number,
+      suggestedTimeOfDay: "morning" | "afternoon" | "evening" | "anytime",
+      explanation: string,
+      factors: string[]
+    },
+    dataState: "no_data" | "emerging" | "established"
+  }>
+}
+```
+
+**Rationale:**
+- Batch analysis (all tasks at once) is more efficient than per-task calls
+- `confidence` level helps user know when to trust estimates
+- `source` shows where estimate came from (user vs AI)
+- `factors` array explains reasoning ("Based on similar tasks...")
+- `suggestedTimeOfDay` helps with energy management
+
+**Consequences:**
+- ✅ Users get actionable time estimates
+- ✅ Suggested order reduces decision fatigue
+- ✅ Explanations build trust in AI recommendations
+- ⚠️ Analysis takes 2-3 seconds (loading state needed)
+- 📝 V2: Use historical completion data for better estimates
+
+---
+
+### FOCUS-003: Task List UI Parity
+
+**Context:** Focus Screen task list was initially different from Dashboard, causing confusion.
+
+**Decision:** Focus task list must exactly mirror Dashboard task list behavior.
+
+**Shared behavior:**
+- Today/Week/All view toggle
+- Same priority colors (red/orange/blue/gray)
+- Same date formatting ("Today", "Tomorrow", "Overdue")
+- Same date picker popover
+- Same completion behavior
+- Same sorting options
+
+**Focus-specific additions:**
+- "Start Timer" button on selected task
+- AI analysis badges (time estimate, suggested order)
+- TickTick list/section badge
+
+**Rationale:**
+- Consistency reduces cognitive load
+- User learns one pattern, applies everywhere
+- Different behavior in similar UIs is confusing for ADHD brain
+
+**Consequences:**
+- ✅ Predictable task interaction
+- ✅ Easy to switch between Dashboard and Focus
+- ⚠️ More code to maintain (near-duplicate components)
+- 📝 Consider extracting shared TaskList component in V2
+
+---
+
+### SYNC-001: TickTick List/Section Names
+
+**Context:** Tasks in TickTick belong to Projects (lists) and Sections, but this context wasn't displayed.
+
+**Decision:** Add `ticktick_list_name` and `ticktick_section_name` columns to tasks table, populated during sync.
+
+**Migration:**
+```sql
+ALTER TABLE public.tasks
+ADD COLUMN IF NOT EXISTS ticktick_list_name text,
+ADD COLUMN IF NOT EXISTS ticktick_section_name text;
+```
+
+**Sync logic:**
+```typescript
+// During pullTasksFromTickTick:
+// 1. Build projectNameMap from projectProfiles
+// 2. Fetch sections for each project
+// 3. Build sectionNameMap
+// 4. When upserting task, include list_name and section_name
+```
+
+**UI display:**
+```tsx
+{task.ticktick_list_name && (
+  <span className="badge bg-purple-50 text-purple-700">
+    📁 {task.ticktick_list_name}
+    {task.ticktick_section_name && ` / ${task.ticktick_section_name}`}
+  </span>
+)}
+```
+
+**Rationale:**
+- Provides context for where task lives in TickTick
+- Helps user understand task grouping without switching apps
+- Section name shows sub-categorization (e.g., "Projects / Build Second Brain")
+
+**Consequences:**
+- ✅ Better task context in Chrononaut
+- ✅ Easier to identify which project a task belongs to
+- ⚠️ Requires re-sync after migration to populate existing tasks
+- 📝 Names update automatically on subsequent syncs
+
+---
+
+*End of December 17-19, 2025 decisions*
+
+---
+
+## December 20-21, 2025
+
+### JOURNAL-001: Client-Side E2EE for Journal Entries
+
+**Context:** Journal entries contain sensitive personal reflections. Users need assurance their private thoughts cannot be read—even by the app developer or if the database is compromised.
+
+**Decision:** Implement client-side end-to-end encryption using Web Crypto API.
+
+**Implementation:**
+- Algorithm: AES-256-GCM (authenticated encryption)
+- Key derivation: PBKDF2 with 100,000 iterations
+- IV: 96-bit random per encryption operation
+- Key storage: Encrypted key + salt in localStorage
+- Passphrase verification: SHA-256 hash stored for quick validation
+
+**What's encrypted:**
+```sql
+encrypted_happened text,   -- Journal content
+encrypted_feelings text,   -- Feelings content
+encrypted_grateful text,   -- Gratitude content
+```
+
+**What's NOT encrypted:**
+```sql
+entry_date,        -- Needed for date navigation
+location_name,     -- Needed for map view
+location_lat/lng,  -- Needed for map view
+mood_label,        -- Needed for mood analytics
+energy_rating,     -- Needed for energy charts
+tags,              -- Needed for filtering/search
+```
+
+**Rationale:**
+- Web Crypto API is native (no dependencies, fast)
+- AES-GCM provides authentication (detects tampering)
+- PBKDF2 with high iterations resists brute force
+- Client-side means server/DB never sees plaintext
+- Metadata (mood, location, tags) remains queryable
+
+**Trade-offs:**
+
+| Encrypted | Unencrypted Metadata |
+|-----------|---------------------|
+| Full privacy of content | Analytics/visualizations possible |
+| No server-side search | Mood trends, location maps work |
+| Password recovery impossible | Faster UI (no decrypt for filtering) |
+| Slightly more complex UX | Better user experience for browsing |
+
+**Security considerations:**
+- Key stored in localStorage (vulnerable if XSS exists)
+- No password recovery (if user forgets, entries unrecoverable)
+- Passphrase hash enables offline verification (but also offline attacks)
+
+**Consequences:**
+- ✅ Strong privacy for journal content
+- ✅ No external dependencies
+- ✅ Analytics still functional on metadata
+- ⚠️ No password recovery mechanism
+- ⚠️ Key in localStorage is XSS-vulnerable
+- 📝 V2: Consider WebAuthn or passkey integration
+
+---
+
+### JOURNAL-002: Three-Section Journal Structure
+
+**Context:** Blank journal pages are overwhelming for ADHD users. Need structure without rigidity.
+
+**Decision:** Fixed three-section layout with clear prompts:
+1. **What happened today?** - Events, activities, occurrences
+2. **How are you feeling?** - Emotional state, reflections
+3. **What are you grateful for?** - Gratitude practice
+
+**Rationale:**
+- Structure reduces "blank page paralysis"
+- Each section has distinct cognitive purpose
+- Gratitude section supports wellbeing research
+- Sections map to different AI agent interests:
+  - Happened → Executive Coach (context for work)
+  - Feelings → Therapist (emotional processing)
+  - Grateful → Pattern Analyst (trend analysis)
+
+**Alternatives considered:**
+1. Single freeform field - Too overwhelming
+2. Daily prompts (varying questions) - Inconsistent, harder to compare
+3. Five-minute journal format - Too rigid, feels like homework
+4. Bullet points only - Loses narrative richness
+
+**Consequences:**
+- ✅ Reduces cognitive load for entry creation
+- ✅ Consistent structure aids AI analysis
+- ✅ Supports gratitude practice research
+- ⚠️ May feel constraining for some users
+- 📝 Consider optional "free notes" section in V2
+
+---
+
+### JOURNAL-003: Photo EXIF Geolocation Extraction
+
+**Context:** Photos often contain embedded GPS coordinates. Users want location context without manual entry.
+
+**Decision:** Build native EXIF parser to extract GPS and auto-populate location.
+
+**Implementation:**
+```typescript
+parseExifFromFile(file: File) → {
+  latitude: number | null,
+  longitude: number | null,
+  dateTaken: Date | null,
+  locationName?: string  // via reverse geocoding
+}
+```
+
+**Rationale:**
+- Many smartphone photos have GPS EXIF tags
+- Manual location entry is friction
+- Native parsing (no external libs) keeps bundle small
+- Reverse geocoding provides human-readable names
+
+**Reverse geocoding:**
+- Uses Nominatim API (OpenStreetMap)
+- Free for low-volume use
+- Returns: city, state, country
+
+**Why native parser vs exifr/exif-js:**
+- Zero dependencies
+- Smaller bundle size
+- Only need GPS + date (not full EXIF spec)
+- Educational: understand the format
+
+**Consequences:**
+- ✅ Automatic location from photos
+- ✅ No external dependencies
+- ✅ Reduces manual entry friction
+- ⚠️ Many photos don't have GPS (camera setting, edited)
+- ⚠️ Nominatim has rate limits (1 req/sec)
+- 📝 Cache geocoding results in V2
+
+---
+
+### FOCUS-004: Focus Cue System Architecture
+
+**Context:** ADHD users struggle with time awareness, task switching, and sustained attention. Need gentle nudges without being annoying.
+
+**Decision:** Build 8-type cue system with variable intervals and context-awareness.
+
+**Cue types:**
+
+| Type | When Fired | Purpose |
+|------|-----------|---------|
+| `session_milestone` | 15/30/45/60 min | Celebrate progress |
+| `break_reminder` | 45+ min sustained | Prevent burnout |
+| `tab_return` | Browser tab return | Welcome back |
+| `task_progress` | Every 15 min on task | Momentum check |
+| `energy_check` | 11am, 2pm, 4pm | Time-of-day awareness |
+| `encouragement` | Random | Dopamine boost |
+| `getting_started` | <5 min task progress | Overcome initiation |
+| `completion_nudge` | >80% estimated time | Push toward finish |
+
+**Architecture:**
+```
+Session Metrics → Cue Engine → Candidate Cues → Cooldown Filter → Display Cue
+                                    ↑
+                              Template Library
+```
+
+**Key components:**
+- `cue-types.ts` - Type definitions and cooldowns
+- `cue-templates.ts` - Message templates per cue type
+- `cue-engine.ts` - Evaluation logic and prioritization
+- `focus-cue-popup.tsx` - UI component
+
+**Rationale:**
+- 8 cue types cover major ADHD attention patterns
+- Separation of types, templates, and engine enables easy tuning
+- Context-awareness (tab return, time-of-day) feels intelligent
+- Celebration cues (milestones) provide positive reinforcement
+
+**Consequences:**
+- ✅ Comprehensive attention support
+- ✅ Modular design for iteration
+- ✅ Context-aware messaging
+- ⚠️ Risk of cue fatigue if not tuned well
+- 📝 Add effectiveness tracking in V2
+
+---
+
+### FOCUS-005: ADHD-Informed Cue Intervals
+
+**Context:** ADHD brains habituate to predictable patterns. Fixed-interval reminders quickly become ignorable.
+
+**Decision:** Variable intervals with jitter and adaptive back-off.
+
+**Implementation:**
+
+1. **Base cooldowns (seconds):**
+```typescript
+CUE_COOLDOWNS = {
+  session_milestone: 300,   // 5 min
+  break_reminder: 600,      // 10 min
+  tab_return: 120,          // 2 min
+  task_progress: 900,       // 15 min
+  energy_check: 1800,       // 30 min
+  encouragement: 600,       // 10 min
+  getting_started: 300,     // 5 min
+  completion_nudge: 600,    // 10 min
+};
+```
+
+2. **Global minimum:**
+```typescript
+GLOBAL_CUE_COOLDOWN = 90;  // 1.5 min between ANY cue
+```
+
+3. **Jitter function:**
+```typescript
+function addJitter(baseSeconds: number, jitterPercent = 0.2): number {
+  const jitter = baseSeconds * jitterPercent;
+  return baseSeconds + (Math.random() * jitter * 2 - jitter);
+}
+```
+
+4. **Adaptive back-off:**
+```typescript
+// If user dismissed 3+ cues in under an hour, stop firing
+if (metrics.cuesDismissedCount >= 3 && metrics.focusTimeSeconds < 3600) {
+  return null;  // They're in flow, leave them alone
+}
+```
+
+**Research basis:**
+- Variable ratio reinforcement schedules are more engaging (Skinner)
+- ADHD brains seek novelty; predictable patterns become background noise
+- Respecting flow state prevents learned helplessness toward cues
+
+**Consequences:**
+- ✅ Prevents pattern habituation
+- ✅ Respects user flow state
+- ✅ Feels more "intelligent" / less robotic
+- ⚠️ Harder to predict when cues will fire
+- 📝 Log cue timing for effectiveness analysis
+
+---
+
+### FOCUS-006: Gentle Cue Visual Design
+
+**Context:** Typical notifications are jarring and anxiety-inducing. Need cues that feel supportive, not stressful.
+
+**Decision:** Pastel gradient backgrounds with soft animations and positive framing.
+
+**Visual design:**
+```typescript
+CUE_STYLES = {
+  session_milestone: {
+    gradient: "from-amber-100 via-yellow-50 to-orange-50",
+    glow: "shadow-amber-200/50",
+    accent: "from-amber-400 to-orange-400",
+  },
+  break_reminder: {
+    gradient: "from-sky-100 via-blue-50 to-cyan-50",
+    ...
+  },
+  // ... each cue type has unique color palette
+};
+```
+
+**Animation choices:**
+- Fade in + slide up (not jarring pop)
+- Gentle pulse on background (subtle movement)
+- Bounce on emoji (draws attention without alarm)
+- Smooth exit animation (doesn't just disappear)
+
+**Copy principles:**
+- Always positive framing ("Great progress!" not "You've been working too long")
+- First-person inclusive ("Let's..." not "You should...")
+- Emoji adds warmth
+- Short messages (scannable, not paragraphs)
+
+**Consequences:**
+- ✅ Feels supportive, not nagging
+- ✅ Distinct colors help identify cue type at glance
+- ✅ Animations add delight without overwhelm
+- ⚠️ Soft colors may not grab attention in peripheral vision
+- 📝 Consider optional "high visibility" mode
+
+---
+
+*End of December 20-21, 2025 decisions*

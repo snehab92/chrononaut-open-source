@@ -147,17 +147,29 @@ export async function pullTasksFromTickTick(
       projectNameMap.set(p.id, p.name);
     });
 
-    // 2. Fetch sections for all projects to get section names
+    // 2. Fetch project data to get sections AND tasks with columnId
+    // The batch/check endpoint doesn't include columnId, so we need project data
     const sectionNameMap = new Map<string, string>();
+    const taskColumnMap = new Map<string, string>(); // task ID -> column ID
+
     for (const project of projects) {
       try {
-        const sections = await client.getSections(project.id);
-        sections.forEach((s: TickTickSection) => {
+        const projectData = await client.getProjectData(project.id);
+
+        // Map section names
+        projectData.columns.forEach((s: TickTickSection) => {
           sectionNameMap.set(s.id, s.name);
         });
+
+        // Map task IDs to their columnId
+        projectData.tasks.forEach((t: TickTickTask) => {
+          if (t.columnId) {
+            taskColumnMap.set(t.id, t.columnId);
+          }
+        });
       } catch (error) {
-        // Some projects might not have sections, ignore errors
-        console.log(`Could not fetch sections for project ${project.id}:`, error);
+        // Some projects might not have project data, ignore errors
+        console.log(`Could not fetch project data for ${project.id}:`, error);
       }
     }
 
@@ -188,7 +200,9 @@ export async function pullTasksFromTickTick(
       try {
         const localTask = localTaskMap.get(remoteTask.id);
         const listName = projectNameMap.get(remoteTask.projectId) || null;
-        const sectionName = remoteTask.columnId ? sectionNameMap.get(remoteTask.columnId) || null : null;
+        // Get columnId from taskColumnMap (from project data) or from remoteTask directly
+        const columnId = taskColumnMap.get(remoteTask.id) || remoteTask.columnId;
+        const sectionName = columnId ? sectionNameMap.get(columnId) || null : null;
         
         if (!localTask) {
           // NEW: Task doesn't exist locally, create it

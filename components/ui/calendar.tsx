@@ -13,18 +13,25 @@ function Calendar({
   className,
   classNames,
   showOutsideDays = true,
+  captionLayout,
   ...props
 }: CalendarProps) {
+  // Hide caption label and nav arrows when using dropdown layout
+  const isDropdownLayout = captionLayout === "dropdown" || captionLayout === "dropdown-months" || captionLayout === "dropdown-years";
+
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
+      captionLayout={captionLayout}
       className={cn("p-3", className)}
       classNames={{
         months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
         month: "space-y-4",
-        month_caption: "flex justify-center pt-1 relative items-center",
-        caption_label: "text-sm font-medium",
-        nav: "space-x-1 flex items-center",
+        month_caption: "flex justify-center pt-1 relative items-center gap-1",
+        caption_label: cn("text-sm font-medium", isDropdownLayout && "hidden"),
+        dropdowns: "flex items-center gap-2",
+        dropdown: "px-2 py-1 text-sm rounded border border-input bg-background hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring",
+        nav: cn("space-x-1 flex items-center", isDropdownLayout && "hidden"),
         button_previous: cn(
           buttonVariants({ variant: "outline" }),
           "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100 absolute left-1"

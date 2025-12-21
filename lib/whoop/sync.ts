@@ -184,7 +184,8 @@ async function syncWorkouts(
   for (const workout of workouts) {
     try {
       // Debug: log raw zone data
-      console.log(`Workout ${workout.id} (${SPORT_NAMES[workout.sport_id] || 'Other'}):`, {
+      const sportId = workout.sport_id ?? 0;
+      console.log(`Workout ${workout.id} (${SPORT_NAMES[sportId] || 'Other'}):`, {
         sport_id: workout.sport_id,
         score: workout.score,
         zone_duration: workout.score?.zone_duration
@@ -194,8 +195,8 @@ async function syncWorkouts(
       const endedAt = new Date(workout.end);
       const totalMinutes = (endedAt.getTime() - startedAt.getTime()) / (1000 * 60);
       const date = startedAt.toISOString().split('T')[0];
-      
-      const activityType = SPORT_NAMES[workout.sport_id] || 'Other';
+
+      const activityType = SPORT_NAMES[sportId] || 'Other';
       const isMeditation = workout.sport_id === 82;
 
       // Convert zone durations from ms to minutes

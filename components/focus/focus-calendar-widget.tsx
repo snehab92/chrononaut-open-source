@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { 
-  Calendar, Video, MapPin, ChevronDown, ChevronUp, 
-  ExternalLink, FileText, ArrowRight
+import {
+  Calendar, Video, MapPin, ChevronDown, ChevronUp,
+  ExternalLink, FileText, ArrowRight, ChevronLeft, ChevronRight as ChevronRightIcon
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 
 interface CalendarEvent {
   id: string;
@@ -28,6 +34,7 @@ interface CalendarEvent {
   organizerEmail?: string;
   status: string;
   meetingLink?: string;
+  linkedNoteId?: string; // Track if note already exists
 }
 
 interface FocusCalendarWidgetProps {
@@ -41,82 +48,139 @@ export function FocusCalendarWidget({ onMeetingNoteCreated }: FocusCalendarWidge
   const [isExpanded, setIsExpanded] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [isCreatingNote, setIsCreatingNote] = useState(false);
-  
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
   const supabase = createClient();
 
-  useEffect(() => {
-    async function fetchEvents() {
-      setIsLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+  // Format date for display
+  const formatDateHeader = (date: Date): string => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
 
-      // Check if Google Calendar is connected
-      const { data: integrations } = await supabase
-        .from("integration_tokens")
-        .select("provider")
-        .eq("user_id", user.id)
-        .eq("provider", "google_calendar");
-      
-      setIsConnected((integrations?.length || 0) > 0);
+    const compareDate = new Date(date);
+    compareDate.setHours(0, 0, 0, 0);
 
-      if ((integrations?.length || 0) > 0) {
-        const now = new Date();
-        const tomorrow = new Date(now);
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        tomorrow.setHours(23, 59, 59, 999);
+    if (compareDate.getTime() === today.getTime()) return "Today";
+    if (compareDate.getTime() === tomorrow.getTime()) return "Tomorrow";
+    if (compareDate.getTime() === yesterday.getTime()) return "Yesterday";
+    return date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  };
 
-        const { data, error } = await supabase
-          .from("calendar_events")
-          .select("*")
-          .eq("user_id", user.id)
-          .gte("start_time", now.toISOString())
-          .lte("start_time", tomorrow.toISOString())
-          .neq("status", "cancelled")
-          .order("start_time", { ascending: true });
+  // Navigate to previous day
+  const goToPreviousDay = () => {
+    const newDate = new Date(selectedDate);
+    newDate.setDate(newDate.getDate() - 1);
+    setSelectedDate(newDate);
+  };
 
-        if (!error && data) {
-          setEvents(data.map((e: any) => ({
-            id: e.id,
-            googleEventId: e.google_event_id,
-            title: e.title,
-            description: e.description,
-            location: e.location,
-            startTime: e.start_time,
-            endTime: e.end_time,
-            allDay: e.all_day,
-            attendees: typeof e.attendees === "string" ? JSON.parse(e.attendees) : e.attendees || [],
-            organizerEmail: e.organizer_email,
-            status: e.status,
-            meetingLink: e.meeting_link,
-          })));
-        }
-      }
-      setIsLoading(false);
+  // Navigate to next day
+  const goToNextDay = () => {
+    const newDate = new Date(selectedDate);
+    newDate.setDate(newDate.getDate() + 1);
+    setSelectedDate(newDate);
+  };
+
+  // Handle date picker selection
+  const handleDateSelect = (date: Date | undefined) => {
+    if (date) {
+      setSelectedDate(date);
+      setShowDatePicker(false);
     }
-    
-    fetchEvents();
-  }, [supabase]);
+  };
 
-  // Create meeting note for an event
-  const startMeetingNote = async (event: CalendarEvent) => {
-    setIsCreatingNote(true);
+  // Fetch events for selected date
+  const fetchEvents = useCallback(async () => {
+    setIsLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-      setIsCreatingNote(false);
+      setIsLoading(false);
       return;
     }
 
-    // Check if a note already exists for this event
-    const { data: existingNote } = await supabase
-      .from("notes")
-      .select("id")
-      .eq("calendar_event_id", event.googleEventId)
-      .single();
+    // Check if Google Calendar is connected
+    const { data: integrations } = await supabase
+      .from("integration_tokens")
+      .select("provider")
+      .eq("user_id", user.id)
+      .eq("provider", "google_calendar");
 
-    if (existingNote) {
-      // Open existing note in Focus editor
-      onMeetingNoteCreated?.(existingNote.id);
+    setIsConnected((integrations?.length || 0) > 0);
+
+    if ((integrations?.length || 0) > 0) {
+      // Get start and end of selected date
+      const dayStart = new Date(selectedDate);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(selectedDate);
+      dayEnd.setHours(23, 59, 59, 999);
+
+      const { data, error } = await supabase
+        .from("calendar_events")
+        .select("*")
+        .eq("user_id", user.id)
+        .gte("start_time", dayStart.toISOString())
+        .lte("start_time", dayEnd.toISOString())
+        .neq("status", "cancelled")
+        .order("start_time", { ascending: true });
+
+      if (!error && data) {
+        // Get all google event IDs
+        const googleEventIds = data.map((e: any) => e.google_event_id);
+
+        // Check which events already have linked notes
+        let noteByEventId = new Map<string, string>();
+        if (googleEventIds.length > 0) {
+          const { data: linkedNotes } = await supabase
+            .from("notes")
+            .select("id, calendar_event_id")
+            .in("calendar_event_id", googleEventIds);
+
+          linkedNotes?.forEach((note: any) => {
+            noteByEventId.set(note.calendar_event_id, note.id);
+          });
+        }
+
+        setEvents(data.map((e: any) => ({
+          id: e.id,
+          googleEventId: e.google_event_id,
+          title: e.title,
+          description: e.description,
+          location: e.location,
+          startTime: e.start_time,
+          endTime: e.end_time,
+          allDay: e.all_day,
+          attendees: typeof e.attendees === "string" ? JSON.parse(e.attendees) : e.attendees || [],
+          organizerEmail: e.organizer_email,
+          status: e.status,
+          meetingLink: e.meeting_link,
+          linkedNoteId: noteByEventId.get(e.google_event_id) || undefined,
+        })));
+      }
+    }
+    setIsLoading(false);
+  }, [supabase, selectedDate]);
+
+  useEffect(() => {
+    fetchEvents();
+  }, [fetchEvents]);
+
+  // Handle meeting note button click
+  const handleMeetingNote = async (event: CalendarEvent) => {
+    // If note already exists, open it
+    if (event.linkedNoteId) {
+      onMeetingNoteCreated?.(event.linkedNoteId);
       setSelectedEvent(null);
+      return;
+    }
+
+    // Otherwise create new note
+    setIsCreatingNote(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
       setIsCreatingNote(false);
       return;
     }
@@ -159,7 +223,13 @@ ${attendeesList ? `**Attendees:** ${attendeesList}` : ""}
       .single();
 
     if (!error && newNote) {
-      // Open new note in Focus editor instead of navigating
+      // Update local state to show note is now linked
+      setEvents(prev => prev.map(e => 
+        e.googleEventId === event.googleEventId 
+          ? { ...e, linkedNoteId: newNote.id }
+          : e
+      ));
+      // Open new note in Focus editor
       onMeetingNoteCreated?.(newNote.id);
     }
     
@@ -195,8 +265,8 @@ ${attendeesList ? `**Attendees:** ${attendeesList}` : ""}
   }
 
   return (
-    <div className="p-4">
-      {/* Header */}
+    <div className="p-4 border-b border-[#E8DCC4]">
+      {/* Header with expand/collapse */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         className="w-full flex items-center justify-between mb-2"
@@ -204,7 +274,6 @@ ${attendeesList ? `**Attendees:** ${attendeesList}` : ""}
         <div className="flex items-center gap-2 text-sm font-medium text-[#1E3D32]">
           <Calendar className="w-4 h-4" />
           Calendar
-          <span className="text-xs text-[#8B9A8F]">({events.length} today)</span>
         </div>
         {isExpanded ? (
           <ChevronUp className="w-4 h-4 text-[#8B9A8F]" />
@@ -212,6 +281,74 @@ ${attendeesList ? `**Attendees:** ${attendeesList}` : ""}
           <ChevronDown className="w-4 h-4 text-[#8B9A8F]" />
         )}
       </button>
+
+      {/* Day Navigation - visible when expanded */}
+      {isExpanded && (
+        <div className="flex items-center justify-between mb-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={goToPreviousDay}
+            className="h-7 w-7 p-0"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </Button>
+
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-[#1E3D32]">
+              {formatDateHeader(selectedDate)}
+            </span>
+            <span className="text-xs text-[#8B9A8F]">
+              ({events.length} event{events.length !== 1 ? "s" : ""})
+            </span>
+
+            {/* Date Picker */}
+            <Popover open={showDatePicker} onOpenChange={setShowDatePicker}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  title="Pick a date"
+                >
+                  <Calendar className="w-3.5 h-3.5 text-[#5C7A6B]" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="center">
+                <CalendarPicker
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={handleDateSelect}
+                  defaultMonth={selectedDate}
+                  captionLayout="dropdown"
+                  fromYear={2020}
+                  toYear={2030}
+                  initialFocus
+                />
+                <div className="border-t p-2 flex gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs flex-1"
+                    onClick={() => handleDateSelect(new Date())}
+                  >
+                    Today
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={goToNextDay}
+            className="h-7 w-7 p-0"
+          >
+            <ChevronRightIcon className="w-4 h-4" />
+          </Button>
+        </div>
+      )}
 
       {/* Events */}
       {isExpanded && (
@@ -222,7 +359,7 @@ ${attendeesList ? `**Attendees:** ${attendeesList}` : ""}
             </div>
           ) : events.length === 0 ? (
             <div className="flex items-center justify-center h-16 text-[#8B9A8F] text-xs border-2 border-dashed border-[#E8DCC4] rounded-lg">
-              No events today
+              No events on {formatDateHeader(selectedDate).toLowerCase()}
             </div>
           ) : (
             events.map((event) => (
@@ -239,6 +376,12 @@ ${attendeesList ? `**Attendees:** ${attendeesList}` : ""}
                     }
                   </span>
                   {event.meetingLink && <Video className="h-3 w-3 text-[#5C7A6B]" />}
+                  {event.linkedNoteId && (
+                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[10px]">
+                      <FileText className="h-2.5 w-2.5" />
+                      Note
+                    </span>
+                  )}
                 </div>
                 <p className="text-sm font-medium text-[#1E3D32] line-clamp-1">
                   {event.title}
@@ -306,12 +449,17 @@ ${attendeesList ? `**Attendees:** ${attendeesList}` : ""}
                 
                 <Button
                   variant="outline"
-                  onClick={() => startMeetingNote(selectedEvent)}
+                  onClick={() => handleMeetingNote(selectedEvent)}
                   disabled={isCreatingNote}
                   className="w-full border-[#E8DCC4] text-[#5C7A6B] hover:bg-[#F5F0E6]"
                 >
                   <FileText className="h-4 w-4 mr-2" />
-                  {isCreatingNote ? "Creating..." : "Start Meeting Notes"}
+                  {isCreatingNote 
+                    ? "Creating..." 
+                    : selectedEvent.linkedNoteId 
+                      ? "Open Meeting Note" 
+                      : "Start Meeting Note"
+                  }
                 </Button>
               </div>
             </div>

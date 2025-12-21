@@ -1,0 +1,6 @@
+{
+  // Workspace settings
+  // Note: Supabase database access is configured via MCP in .cursor/mcp.json
+  // See docs/Supabase_MCP_Setup.md for details
+}
+

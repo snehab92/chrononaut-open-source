@@ -209,6 +209,23 @@ export class TickTickClient {
   }
 
   /**
+   * Get full project data including tasks with columnId
+   */
+  async getProjectData(projectId: string): Promise<{
+    tasks: TickTickTask[];
+    columns: TickTickSection[];
+  }> {
+    const data = await this.request<{
+      tasks: TickTickTask[];
+      columns: TickTickSection[];
+    }>('GET', `/project/${projectId}/data`);
+    return {
+      tasks: data.tasks || [],
+      columns: data.columns || [],
+    };
+  }
+
+  /**
    * Get a single task
    */
   async getTask(projectId: string, taskId: string): Promise<TickTickTask> {

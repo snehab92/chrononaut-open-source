@@ -75,6 +75,42 @@ interface FocusTaskListProps {
 type ViewMode = "today" | "week" | "all";
 type SortMode = "priority" | "time-asc" | "time-desc" | "suggested";
 
+// List badge colors - consistent hashing for visual distinction
+const LIST_COLORS = [
+  { bg: "bg-purple-100", text: "text-purple-700", border: "border-purple-200" },
+  { bg: "bg-blue-100", text: "text-blue-700", border: "border-blue-200" },
+  { bg: "bg-green-100", text: "text-green-700", border: "border-green-200" },
+  { bg: "bg-amber-100", text: "text-amber-700", border: "border-amber-200" },
+  { bg: "bg-pink-100", text: "text-pink-700", border: "border-pink-200" },
+  { bg: "bg-cyan-100", text: "text-cyan-700", border: "border-cyan-200" },
+  { bg: "bg-indigo-100", text: "text-indigo-700", border: "border-indigo-200" },
+  { bg: "bg-rose-100", text: "text-rose-700", border: "border-rose-200" },
+];
+
+const SECTION_COLORS = [
+  { bg: "bg-slate-100", text: "text-slate-600", border: "border-slate-200" },
+  { bg: "bg-stone-100", text: "text-stone-600", border: "border-stone-200" },
+  { bg: "bg-zinc-100", text: "text-zinc-600", border: "border-zinc-200" },
+  { bg: "bg-neutral-100", text: "text-neutral-600", border: "border-neutral-200" },
+  { bg: "bg-gray-100", text: "text-gray-600", border: "border-gray-200" },
+];
+
+function getListColor(listName: string) {
+  let hash = 0;
+  for (let i = 0; i < listName.length; i++) {
+    hash = listName.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return LIST_COLORS[Math.abs(hash) % LIST_COLORS.length];
+}
+
+function getSectionColor(sectionName: string) {
+  let hash = 0;
+  for (let i = 0; i < sectionName.length; i++) {
+    hash = sectionName.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return SECTION_COLORS[Math.abs(hash) % SECTION_COLORS.length];
+}
+
 // Format duration helper
 function formatDuration(minutes: number): string {
   if (minutes < 60) return `${minutes}m`;
@@ -243,9 +279,10 @@ export function FocusTaskList({ onSelectTask, onStartTimer, selectedTaskId, isFo
 
     // View mode filter
     if (viewMode === "all") return true;
-    
-    if (!task.due_date) return viewMode === "all";
-    
+
+    // Tasks without due date only show in "all" view
+    if (!task.due_date) return false;
+
     const dueDate = new Date(task.due_date);
     dueDate.setHours(0, 0, 0, 0);
 
@@ -256,7 +293,7 @@ export function FocusTaskList({ onSelectTask, onStartTimer, selectedTaskId, isFo
     } else if (viewMode === "week") {
       return dueDate < endOfWeek;
     }
-    
+
     return true;
   });
 
@@ -376,47 +413,63 @@ export function FocusTaskList({ onSelectTask, onStartTimer, selectedTaskId, isFo
   const TaskItem = ({ task, showOrder = false }: { task: FocusTask; showOrder?: boolean }) => {
     const analysis = analyses[task.id];
     const isSelected = task.id === selectedTaskId;
-    
+    const listColor = task.ticktick_list_name ? getListColor(task.ticktick_list_name) : null;
+    const sectionColor = task.ticktick_section_name ? getSectionColor(task.ticktick_section_name) : null;
+
     return (
       <div
         className={cn(
-          "p-3 rounded-lg transition-colors group",
-          isSelected ? "bg-[#E8DCC4]" : "hover:bg-[#F5F0E6]",
+          "p-3 rounded-xl transition-all group border",
+          isSelected
+            ? "bg-[#E8DCC4] border-[#D4C9AC] shadow-sm"
+            : "bg-white hover:bg-[#F5F0E6] border-transparent hover:border-[#E8DCC4]",
           "cursor-pointer"
         )}
         onClick={() => onSelectTask(task)}
       >
-        <div className="flex items-start gap-2">
+        <div className="flex items-start gap-3">
           <Circle className={cn(
-            "w-4 h-4 mt-0.5 flex-shrink-0",
+            "w-4 h-4 mt-1 flex-shrink-0",
             priorityColors[task.priority] || priorityColors[0]
           )} />
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 space-y-2">
             {/* Title row */}
             <div className="flex items-start justify-between gap-2">
-              <p className="text-sm font-medium text-[#1E3D32] line-clamp-2">
+              <p className="text-sm font-medium text-[#1E3D32] leading-relaxed">
                 {showOrder && analysis?.prioritization?.suggestedOrder && (
-                  <span className="inline-flex items-center justify-center w-5 h-5 mr-1.5 text-xs font-medium bg-[#2D5A47] text-white rounded-full">
+                  <span className="inline-flex items-center justify-center w-5 h-5 mr-2 text-xs font-medium bg-[#2D5A47] text-white rounded-full">
                     {analysis.prioritization.suggestedOrder}
                   </span>
                 )}
                 {task.title}
               </p>
             </div>
-            
-            {/* Second row: List/Section + Due Date + Time Estimate */}
-            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-              {/* List & Section Badge */}
-              {task.ticktick_list_name && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-purple-50 text-purple-700">
-                  <Folder className="h-3 w-3" />
-                  {task.ticktick_list_name}
-                  {task.ticktick_section_name && (
-                    <span className="opacity-70">/ {task.ticktick_section_name}</span>
-                  )}
-                </span>
-              )}
 
+            {/* Row 2: List + Section badges */}
+            {(task.ticktick_list_name || task.ticktick_section_name) && (
+              <div className="flex items-center gap-2 flex-wrap">
+                {task.ticktick_list_name && listColor && (
+                  <span className={cn(
+                    "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium border",
+                    listColor.bg, listColor.text, listColor.border
+                  )}>
+                    <Folder className="h-2.5 w-2.5" />
+                    {task.ticktick_list_name}
+                  </span>
+                )}
+                {task.ticktick_section_name && sectionColor && (
+                  <span className={cn(
+                    "inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium border",
+                    sectionColor.bg, sectionColor.text, sectionColor.border
+                  )}>
+                    {task.ticktick_section_name}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Row 3: Due Date + Time Estimate (separated for clarity) */}
+            <div className="flex items-center gap-3 flex-wrap">
               {/* Due Date */}
               <Popover>
                 <PopoverTrigger asChild>
@@ -672,14 +725,14 @@ export function FocusTaskList({ onSelectTask, onStartTimer, selectedTaskId, isFo
           </div>
         ) : viewMode === "week" ? (
           // Week view - grouped by day (matching Dashboard)
-          <div className="space-y-3">
+          <div className="space-y-4">
             {sortedDays.map((day) => {
               const dayTasks = tasksByDay[day];
               const isToday = day !== "No Date" && new Date(day).toDateString() === today.toDateString();
               const isPast = day !== "No Date" && new Date(day) < today;
 
               return (
-                <div key={day} className="space-y-1">
+                <div key={day} className="space-y-2">
                   <div className={cn(
                     "flex items-center gap-2 px-2 py-1",
                     isPast ? "text-red-500" : isToday ? "text-[#2D5A47] font-medium" : "text-[#5C7A6B]"
@@ -693,7 +746,7 @@ export function FocusTaskList({ onSelectTask, onStartTimer, selectedTaskId, isFo
                     </span>
                     <span className="text-xs text-[#8B9A8F]">({dayTasks.length})</span>
                   </div>
-                  <div className="ml-3 border-l-2 border-[#E8DCC4] pl-1 space-y-1">
+                  <div className="ml-3 border-l-2 border-[#E8DCC4] pl-2 space-y-2">
                     {dayTasks.map((task) => (
                       <TaskItem key={task.id} task={task} showOrder={sortMode === "suggested"} />
                     ))}
@@ -704,7 +757,7 @@ export function FocusTaskList({ onSelectTask, onStartTimer, selectedTaskId, isFo
           </div>
         ) : (
           // Today / All view - simple list
-          <div className="space-y-1">
+          <div className="space-y-2">
             {sortedTasks.map((task) => (
               <TaskItem key={task.id} task={task} showOrder={sortMode === "suggested"} />
             ))}

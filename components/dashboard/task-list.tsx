@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { 
   Circle, Loader2, Calendar, ArrowRight, ChevronDown, 
-  Clock, Sparkles, Info, ArrowUpDown, Sun, Moon, Sunset
+  Clock, Sparkles, Info, ArrowUpDown, Sun, Moon, Sunset, Folder
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -30,8 +30,8 @@ import { cn } from "@/lib/utils";
 
 interface TaskListProps {
   isConnected: boolean;
-  compact?: boolean; // For use in Focus screen drawer
-  onStartTask?: (task: Task) => void; // For Focus screen
+  compact?: boolean;
+  onStartTask?: (task: Task) => void;
 }
 
 interface TaskAnalysis {
@@ -59,6 +59,42 @@ interface TaskAnalysis {
 type ViewMode = "today" | "week";
 type SortMode = "priority" | "time-asc" | "time-desc" | "suggested";
 
+// List badge colors - consistent hashing for visual distinction
+const LIST_COLORS = [
+  { bg: "bg-purple-100", text: "text-purple-700", border: "border-purple-200" },
+  { bg: "bg-blue-100", text: "text-blue-700", border: "border-blue-200" },
+  { bg: "bg-green-100", text: "text-green-700", border: "border-green-200" },
+  { bg: "bg-amber-100", text: "text-amber-700", border: "border-amber-200" },
+  { bg: "bg-pink-100", text: "text-pink-700", border: "border-pink-200" },
+  { bg: "bg-cyan-100", text: "text-cyan-700", border: "border-cyan-200" },
+  { bg: "bg-indigo-100", text: "text-indigo-700", border: "border-indigo-200" },
+  { bg: "bg-rose-100", text: "text-rose-700", border: "border-rose-200" },
+];
+
+const SECTION_COLORS = [
+  { bg: "bg-slate-100", text: "text-slate-600", border: "border-slate-200" },
+  { bg: "bg-stone-100", text: "text-stone-600", border: "border-stone-200" },
+  { bg: "bg-zinc-100", text: "text-zinc-600", border: "border-zinc-200" },
+  { bg: "bg-neutral-100", text: "text-neutral-600", border: "border-neutral-200" },
+  { bg: "bg-gray-100", text: "text-gray-600", border: "border-gray-200" },
+];
+
+function getListColor(listName: string) {
+  let hash = 0;
+  for (let i = 0; i < listName.length; i++) {
+    hash = listName.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return LIST_COLORS[Math.abs(hash) % LIST_COLORS.length];
+}
+
+function getSectionColor(sectionName: string) {
+  let hash = 0;
+  for (let i = 0; i < sectionName.length; i++) {
+    hash = sectionName.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return SECTION_COLORS[Math.abs(hash) % SECTION_COLORS.length];
+}
+
 // Format duration helper
 function formatDuration(minutes: number): string {
   if (minutes < 60) return `${minutes}m`;
@@ -80,12 +116,12 @@ function TimeOfDayIcon({ time }: { time: string }) {
 
 // Badge colors based on source type
 const sourceColors: Record<string, string> = {
-  ai_guess: "bg-[#F5F0E6] text-[#8B9A8F]",      // Gray - no user estimate
-  user_raw: "bg-blue-50 text-blue-700",          // Blue - user estimate, no history yet
-  user_adjusted: "bg-green-50 text-green-700",   // Green - user estimate + personal adjustment
+  ai_guess: "bg-[#F5F0E6] text-[#8B9A8F]",
+  user_raw: "bg-blue-50 text-blue-700",
+  user_adjusted: "bg-green-50 text-green-700",
 };
 
-// Confidence colors (used as border/accent)
+// Confidence colors
 const confidenceAccents: Record<string, string> = {
   none: "",
   low: "ring-1 ring-yellow-300",
@@ -146,22 +182,20 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
   endOfWeek.setDate(endOfWeek.getDate() + 7);
 
   const filteredTasks = tasks.filter((task) => {
-    if (!task.dueDate) return false; // Exclude undated tasks from both views
+    if (!task.dueDate) return false;
     const dueDate = new Date(task.dueDate);
     dueDate.setHours(0, 0, 0, 0);
 
     if (viewMode === "today") {
-      // Today: due today or overdue (before tomorrow)
       const tomorrow = new Date(today);
       tomorrow.setDate(tomorrow.getDate() + 1);
       return dueDate < tomorrow;
     } else {
-      // Week: due within next 7 days (including overdue)
       return dueDate < endOfWeek;
     }
   });
 
-  // Sort tasks based on sort mode
+  // Sort tasks
   const sortedTasks = [...filteredTasks].sort((a, b) => {
     switch (sortMode) {
       case "priority":
@@ -287,7 +321,6 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
     return date < today;
   };
 
-  // Get data state message
   const getDataStateMessage = () => {
     const firstAnalysis = Object.values(analyses)[0];
     if (!firstAnalysis) return null;
@@ -298,68 +331,93 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
       case "emerging":
         return "Learning your patterns...";
       case "established":
-        return null; // Don't show message when established
+        return null;
     }
   };
 
   const TaskItem = ({ task, showOrder = false }: { task: Task; showOrder?: boolean }) => {
     const analysis = analyses[task.id];
-    
+    const listColor = task.ticktickListName ? getListColor(task.ticktickListName) : null;
+    const sectionColor = task.ticktickSectionName ? getSectionColor(task.ticktickSectionName) : null;
+
     return (
       <div className={cn(
-        "flex items-start gap-3 p-3 rounded-xl hover:bg-[#F5F0E6] transition-colors group",
+        "p-3 rounded-xl transition-all group border bg-white hover:bg-[#F5F0E6] border-transparent hover:border-[#E8DCC4]",
         compact && "p-2"
       )}>
-        {/* Completion button */}
-        <button
-          onClick={() => handleComplete(task)}
-          disabled={completingTask === task.id}
-          className="mt-0.5 flex-shrink-0"
-        >
-          {completingTask === task.id ? (
-            <Loader2 className="h-5 w-5 text-[#8B9A8F] animate-spin" />
-          ) : (
-            <Circle
-              className={cn(
-                "h-5 w-5 transition-colors cursor-pointer",
-                priorityColors[task.priority] || priorityColors[0],
-                "group-hover:text-[#2D5A47]"
-              )}
-            />
-          )}
-        </button>
-
-        <div className="flex-1 min-w-0">
-          {/* Title row */}
-          <div className="flex items-start justify-between gap-2">
-            <p className={cn(
-              "text-sm text-[#1E3D32] leading-tight",
-              compact && "text-xs"
-            )}>
-              {showOrder && analysis && (
-                <span className="inline-flex items-center justify-center w-5 h-5 mr-2 text-xs font-medium bg-[#2D5A47] text-white rounded-full">
-                  {analysis.prioritization.suggestedOrder}
-                </span>
-              )}
-              {task.title}
-            </p>
-            
-            {/* Start button for Focus screen */}
-            {onStartTask && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => onStartTask(task)}
-                className="opacity-0 group-hover:opacity-100 h-6 px-2 text-xs"
-              >
-                Start
-              </Button>
+        <div className="flex items-start gap-3">
+          {/* Completion button */}
+          <button
+            onClick={() => handleComplete(task)}
+            disabled={completingTask === task.id}
+            className="mt-1 flex-shrink-0"
+          >
+            {completingTask === task.id ? (
+              <Loader2 className="h-5 w-5 text-[#8B9A8F] animate-spin" />
+            ) : (
+              <Circle
+                className={cn(
+                  "h-5 w-5 transition-colors cursor-pointer",
+                  priorityColors[task.priority] || priorityColors[0],
+                  "group-hover:text-[#2D5A47]"
+                )}
+              />
             )}
-          </div>
+          </button>
 
-          {/* Meta row: date + AI insights */}
-          <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-            {/* Date picker */}
+          <div className="flex-1 min-w-0 space-y-2">
+            {/* Title row */}
+            <div className="flex items-start justify-between gap-2">
+              <p className={cn(
+                "text-sm text-[#1E3D32] leading-relaxed font-medium",
+                compact && "text-xs"
+              )}>
+                {showOrder && analysis && (
+                  <span className="inline-flex items-center justify-center w-5 h-5 mr-2 text-xs font-medium bg-[#2D5A47] text-white rounded-full">
+                    {analysis.prioritization.suggestedOrder}
+                  </span>
+                )}
+                {task.title}
+              </p>
+
+              {onStartTask && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onStartTask(task)}
+                  className="opacity-0 group-hover:opacity-100 h-6 px-2 text-xs"
+                >
+                  Start
+                </Button>
+              )}
+            </div>
+
+            {/* Row 2: List + Section badges */}
+            {(task.ticktickListName || task.ticktickSectionName) && (
+              <div className="flex items-center gap-2 flex-wrap">
+                {task.ticktickListName && listColor && (
+                  <span className={cn(
+                    "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium border",
+                    listColor.bg, listColor.text, listColor.border
+                  )}>
+                    <Folder className="h-2.5 w-2.5" />
+                    {task.ticktickListName}
+                  </span>
+                )}
+                {task.ticktickSectionName && sectionColor && (
+                  <span className={cn(
+                    "inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium border",
+                    sectionColor.bg, sectionColor.text, sectionColor.border
+                  )}>
+                    {task.ticktickSectionName}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Row 3: Date + AI insights */}
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Date picker */}
             {viewMode === "today" && (
               <Popover>
                 <PopoverTrigger asChild>
@@ -414,7 +472,6 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
             {/* AI Insights */}
             {showAiInsights && analysis && (
               <TooltipProvider>
-                {/* Time Estimate */}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className={cn(
@@ -423,7 +480,6 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
                       confidenceAccents[analysis.timeEstimate.confidence]
                     )}>
                       <Clock className="h-3 w-3" />
-                      {/* Show adjustment arrow if user estimate was adjusted */}
                       {analysis.timeEstimate.source === "user_adjusted" && analysis.timeEstimate.userEstimate ? (
                         <>
                           <span className="opacity-60 line-through">{formatDuration(analysis.timeEstimate.userEstimate)}</span>
@@ -451,7 +507,6 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
                   </TooltipContent>
                 </Tooltip>
 
-                {/* Suggested Time of Day */}
                 {analysis.prioritization.suggestedTimeOfDay !== "anytime" && (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -472,6 +527,7 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
                 )}
               </TooltipProvider>
             )}
+            </div>
           </div>
         </div>
       </div>
@@ -497,7 +553,6 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
     <div className="space-y-4">
       {/* Header row */}
       <div className="flex items-center justify-between gap-2">
-        {/* View Toggle */}
         <div className="flex gap-1 p-1 bg-[#F5F0E6] rounded-lg">
           <button
             onClick={() => setViewMode("today")}
@@ -523,9 +578,7 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
           </button>
         </div>
 
-        {/* Controls */}
         <div className="flex items-center gap-2">
-          {/* AI toggle */}
           <Button
             variant="ghost"
             size="sm"
@@ -539,7 +592,6 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
             {isAnalyzing && <Loader2 className="h-3 w-3 animate-spin" />}
           </Button>
 
-          {/* Sort dropdown */}
           {showAiInsights && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -570,7 +622,6 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
         </div>
       </div>
 
-      {/* Data state message */}
       {showAiInsights && dataStateMessage && (
         <div className="flex items-center gap-2 px-3 py-2 bg-[#F5F0E6] rounded-lg text-xs text-[#5C7A6B]">
           <Sparkles className="h-3 w-3" />
@@ -578,20 +629,17 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
         </div>
       )}
 
-      {/* Task List */}
       {filteredTasks.length === 0 ? (
         <div className="flex items-center justify-center h-32 text-[#8B9A8F] text-sm border-2 border-dashed border-[#E8DCC4] rounded-xl">
           🎉 {viewMode === "today" ? "All caught up for today!" : "Nothing due this week!"}
         </div>
       ) : viewMode === "today" ? (
-        // Today view - simple list with suggested order
-        <div className="space-y-1">
+        <div className="space-y-2">
           {sortedTasks.map((task) => (
             <TaskItem key={task.id} task={task} showOrder={sortMode === "suggested"} />
           ))}
         </div>
       ) : (
-        // Week view - grouped by day
         <div className="space-y-4">
           {sortedDays.map((day) => {
             const dayTasks = tasksByDay[day];
@@ -599,7 +647,7 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
             const isPast = day !== "No Date" && new Date(day) < today;
 
             return (
-              <div key={day} className="space-y-1">
+              <div key={day} className="space-y-2">
                 <div className={cn(
                   "flex items-center gap-2 px-3 py-1",
                   isPast ? "text-red-500" : isToday ? "text-[#2D5A47] font-medium" : "text-[#5C7A6B]"
@@ -613,7 +661,7 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
                   </span>
                   <span className="text-xs text-[#8B9A8F]">({dayTasks.length})</span>
                 </div>
-                <div className="ml-4 border-l-2 border-[#E8DCC4] pl-2 space-y-1">
+                <div className="ml-4 border-l-2 border-[#E8DCC4] pl-3 space-y-2">
                   {dayTasks.map((task) => (
                     <TaskItem key={task.id} task={task} />
                   ))}

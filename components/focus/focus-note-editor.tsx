@@ -174,6 +174,40 @@ export function FocusNoteEditor({ initialNoteId, onNoteCreated }: FocusNoteEdito
     }
   }, [initialNoteId]);
 
+  // Auto-delete empty notes on unmount (navigation away from Focus screen)
+  // This ensures blank notes don't clutter the notebook
+  useEffect(() => {
+    const noteRef = { id: selectedNote?.id, title: localTitle, content: localContent };
+
+    return () => {
+      const noteId = noteRef.id;
+      if (noteId) {
+        const strippedContent = noteRef.content.replace(/<[^>]*>/g, '').trim();
+        const isDefaultTitle = noteRef.title === "Focus Note" || noteRef.title === "Untitled" || !noteRef.title.trim();
+        const isEmpty = isDefaultTitle && !strippedContent;
+
+        if (isEmpty) {
+          // Delete empty note asynchronously on unmount
+          supabase.from("notes").delete().eq("id", noteId);
+        }
+      }
+    };
+  }, [selectedNote?.id, localTitle, localContent, supabase]);
+
+  // Warn before browser close if there's an empty note
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (selectedNote && isNoteEmpty(localTitle, localContent)) {
+        e.preventDefault();
+        e.returnValue = "You have an empty note. It will be deleted if you leave.";
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [selectedNote, localTitle, localContent]);
+
   // Search notes
   const searchNotes = useCallback(async (query: string) => {
     if (!query.trim()) {
@@ -251,22 +285,25 @@ export function FocusNoteEditor({ initialNoteId, onNoteCreated }: FocusNoteEdito
     }
   };
 
-  // Check if note is empty (for save/delete dialog)
+  // Check if note is empty (blank content and default title)
   const isNoteEmpty = (title: string, content: string) => {
     const strippedContent = content.replace(/<[^>]*>/g, '').trim();
     const isDefaultTitle = title === "Focus Note" || title === "Untitled" || !title.trim();
     return isDefaultTitle && !strippedContent;
   };
 
-  // Handle switching notes or closing
-  const handleNoteSwitch = (note: Note | null) => {
+  // Auto-delete empty note silently
+  const autoDeleteEmptyNote = async (noteId: string) => {
+    await supabase.from("notes").delete().eq("id", noteId);
+  };
+
+  // Handle switching notes or closing - auto-delete empty notes
+  const handleNoteSwitch = async (note: Note | null) => {
+    // If current note is empty, auto-delete it (no dialog)
     if (selectedNote && isNoteEmpty(localTitle, localContent)) {
-      setPendingNote(note);
-      setPendingAction("switch");
-      setShowSaveDeleteDialog(true);
-      return;
+      await autoDeleteEmptyNote(selectedNote.id);
     }
-    
+
     if (note) {
       selectNote(note);
     } else {
@@ -274,34 +311,19 @@ export function FocusNoteEditor({ initialNoteId, onNoteCreated }: FocusNoteEdito
     }
   };
 
-  // Delete empty note
+  // Cleanup function to delete empty note (for dialog compatibility)
   const deleteEmptyNote = async () => {
     if (selectedNote) {
-      await supabase.from("notes").delete().eq("id", selectedNote.id);
+      await autoDeleteEmptyNote(selectedNote.id);
     }
-    
     setShowSaveDeleteDialog(false);
-    
-    if (pendingAction === "switch" && pendingNote) {
-      selectNote(pendingNote);
-    } else {
-      clearNote();
-    }
-    
+    clearNote();
     setPendingNote(null);
     setPendingAction(null);
   };
 
-  // Keep empty note
   const keepEmptyNote = () => {
     setShowSaveDeleteDialog(false);
-    
-    if (pendingAction === "switch" && pendingNote) {
-      selectNote(pendingNote);
-    } else {
-      clearNote();
-    }
-    
     setPendingNote(null);
     setPendingAction(null);
   };
@@ -329,12 +351,9 @@ export function FocusNoteEditor({ initialNoteId, onNoteCreated }: FocusNoteEdito
 
   // Create new note
   const createNewNote = async () => {
-    // Check if current note is empty first
+    // Auto-delete current note if it's empty
     if (selectedNote && isNoteEmpty(localTitle, localContent)) {
-      setPendingAction("switch");
-      setPendingNote(null);
-      setShowSaveDeleteDialog(true);
-      return;
+      await autoDeleteEmptyNote(selectedNote.id);
     }
 
     const { data: { user } } = await supabase.auth.getUser();
@@ -639,7 +658,10 @@ export function FocusNoteEditor({ initialNoteId, onNoteCreated }: FocusNoteEdito
 
             {/* Note Toolbar - shows when note selected */}
             {selectedNote && (
-              <div className="flex items-center gap-2 mb-2 pb-2 border-b border-[#E8DCC4]">
+              <div
+                className="flex items-center gap-2 mb-2 pb-2 border-b border-[#E8DCC4]"
+                onClick={(e) => e.stopPropagation()}
+              >
                 {/* Expand search button */}
                 {isSearchCollapsed && (
                   <Button
@@ -664,87 +686,50 @@ export function FocusNoteEditor({ initialNoteId, onNoteCreated }: FocusNoteEdito
                   <Plus className="w-3.5 h-3.5 text-[#8B9A8F]" />
                 </Button>
 
-                {/* Editable Title */}
-                {isEditingTitle ? (
-                  <Input
-                    ref={titleInputRef}
-                    value={localTitle}
-                    onChange={(e) => handleTitleChange(e.target.value)}
-                    onBlur={() => setIsEditingTitle(false)}
-                    onKeyDown={(e) => e.key === "Enter" && setIsEditingTitle(false)}
-                    className="h-7 text-sm font-medium flex-1 bg-transparent border-[#E8DCC4]"
-                    autoFocus
-                  />
-                ) : (
-                  <button
-                    onClick={() => setIsEditingTitle(true)}
-                    className="flex-1 text-left text-sm font-medium text-[#1E3D32] hover:text-[#2D5A47] truncate flex items-center gap-1"
-                  >
-                    {localTitle || "Untitled"}
-                    <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-50" />
-                  </button>
-                )}
+                {/* Editable Title + Label (left side) */}
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  {isEditingTitle ? (
+                    <Input
+                      ref={titleInputRef}
+                      value={localTitle}
+                      onChange={(e) => handleTitleChange(e.target.value)}
+                      onBlur={() => setIsEditingTitle(false)}
+                      onKeyDown={(e) => e.key === "Enter" && setIsEditingTitle(false)}
+                      className="h-7 text-sm font-medium flex-1 bg-transparent border-[#E8DCC4]"
+                      autoFocus
+                    />
+                  ) : (
+                    <button
+                      onClick={() => setIsEditingTitle(true)}
+                      className="text-left text-sm font-medium text-[#1E3D32] hover:text-[#2D5A47] truncate flex items-center gap-1"
+                    >
+                      {localTitle || "Untitled"}
+                      <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-50" />
+                    </button>
+                  )}
 
-                <div className="flex items-center gap-1 ml-auto">
-                  {/* Star */}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={toggleStarred}
-                    className={cn("h-7 w-7 p-0", selectedNote.is_starred && "text-amber-500")}
-                    title={selectedNote.is_starred ? "Unstar" : "Star"}
-                  >
-                    <Star className={cn("w-3.5 h-3.5", selectedNote.is_starred && "fill-current")} />
-                  </Button>
-
-                  {/* Folder */}
-                  <Select
-                    value={selectedNote.folder_id || "unfiled"}
-                    onValueChange={(v) => updateFolder(v === "unfiled" ? null : v)}
-                  >
-                    <SelectTrigger className="h-7 w-auto gap-1 border-0 bg-transparent text-xs px-2">
-                      <FolderOpen className="w-3.5 h-3.5 text-[#8B9A8F]" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="unfiled">Unfiled</SelectItem>
-                      {folders.map((f) => (
-                        <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  {/* Note Type */}
-                  <Select
-                    value={selectedNote.note_type}
-                    onValueChange={updateNoteType}
-                  >
-                    <SelectTrigger className="h-7 w-auto gap-1 border-0 bg-transparent text-xs px-2">
-                      <span>{NOTE_TYPE_LABELS[selectedNote.note_type as NoteType]?.split(" ")[0] || "📄"}</span>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {NOTE_TYPES.map((type) => (
-                        <SelectItem key={type} value={type}>
-                          {NOTE_TYPE_LABELS[type]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  {/* Labels */}
+                  {/* Label - positioned near title like notes screen */}
                   <Popover open={showLabelPopover} onOpenChange={setShowLabelPopover}>
                     <PopoverTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2 gap-1"
-                      >
-                        <Tag className="w-3.5 h-3.5 text-[#8B9A8F]" />
-                        {(selectedNote.tags?.length || 0) > 0 && (
-                          <span className="text-xs">{selectedNote.tags?.length}</span>
-                        )}
-                      </Button>
+                      {selectedNote.tags?.[0] ? (
+                        <button
+                          className={cn(
+                            "inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium whitespace-nowrap flex-shrink-0 hover:opacity-80 transition-opacity",
+                            getLabelColor(selectedNote.tags[0]).bg,
+                            getLabelColor(selectedNote.tags[0]).text
+                          )}
+                        >
+                          {selectedNote.tags[0]}
+                          <Pencil className="w-2.5 h-2.5 opacity-60" />
+                        </button>
+                      ) : (
+                        <button className="text-xs text-[#8B9A8F] hover:text-[#5C7A6B] flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-[#F5F0E6]">
+                          <Tag className="w-3 h-3" />
+                          <span>Add label</span>
+                        </button>
+                      )}
                     </PopoverTrigger>
-                    <PopoverContent className="w-56 p-2" align="end">
+                    <PopoverContent className="w-56 p-2" align="start">
                       {/* Current labels */}
                       {(selectedNote.tags?.length || 0) > 0 && (
                         <div className="flex flex-wrap gap-1 mb-2">
@@ -767,7 +752,7 @@ export function FocusNoteEditor({ initialNoteId, onNoteCreated }: FocusNoteEdito
                           })}
                         </div>
                       )}
-                      
+
                       {/* Add label input */}
                       <Input
                         placeholder="Add label..."
@@ -780,7 +765,7 @@ export function FocusNoteEditor({ initialNoteId, onNoteCreated }: FocusNoteEdito
                         }}
                         className="h-8 text-xs"
                       />
-                      
+
                       {/* Existing labels */}
                       {filteredLabels.length > 0 && (
                         <div className="mt-2 max-h-32 overflow-y-auto">
@@ -797,6 +782,53 @@ export function FocusNoteEditor({ initialNoteId, onNoteCreated }: FocusNoteEdito
                       )}
                     </PopoverContent>
                   </Popover>
+                </div>
+
+                <div className="flex items-center gap-1 ml-auto">
+                  {/* Star */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={toggleStarred}
+                    className={cn("h-7 w-7 p-0", selectedNote.is_starred && "text-amber-500")}
+                    title={selectedNote.is_starred ? "Unstar" : "Star"}
+                  >
+                    <Star className={cn("w-3.5 h-3.5", selectedNote.is_starred && "fill-current")} />
+                  </Button>
+
+                  {/* Folder Select */}
+                  <Select
+                    value={selectedNote.folder_id || "unfiled"}
+                    onValueChange={(v) => updateFolder(v === "unfiled" ? null : v)}
+                  >
+                    <SelectTrigger className="h-7 w-auto min-w-[100px] gap-1 border border-[#E8DCC4] bg-[#F5F0E6] hover:bg-[#E8DCC4] text-xs px-2 rounded">
+                      <FolderOpen className="w-3 h-3 text-[#5C7A6B] flex-shrink-0" />
+                      <SelectValue placeholder="Select folder" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unfiled">📁 Unfiled</SelectItem>
+                      {folders.map((f) => (
+                        <SelectItem key={f.id} value={f.id}>📁 {f.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {/* Note Type Select */}
+                  <Select
+                    value={selectedNote.note_type}
+                    onValueChange={updateNoteType}
+                  >
+                    <SelectTrigger className="h-7 w-auto min-w-[110px] gap-1 border border-[#E8DCC4] bg-[#F5F0E6] hover:bg-[#E8DCC4] text-xs px-2 rounded">
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {NOTE_TYPES.map((type) => (
+                        <SelectItem key={type} value={type}>
+                          {NOTE_TYPE_LABELS[type]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
                   {/* Close note */}
                   <Button

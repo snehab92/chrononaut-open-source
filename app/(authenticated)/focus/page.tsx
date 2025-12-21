@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { 
-  Timer, Play, Pause, Square, ChevronRight, ChevronLeft, 
+import {
+  Timer, Play, Pause, Square, ChevronRight, ChevronLeft,
   Zap, FileText, Users, Mic, Briefcase, Maximize2, Minimize2,
   CheckCircle2, Clock, Sparkles, Bell, BellOff,
-  ChevronDown, ChevronUp, Brain, BarChart3, X
+  ChevronDown, ChevronUp, Brain, BarChart3, X, Copy, Check, RotateCcw
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,8 @@ import { FocusTaskList, FocusTask } from "@/components/focus/focus-task-list";
 import { FocusCalendarWidget } from "@/components/focus/focus-calendar-widget";
 import { FocusAnalyticsWidget } from "@/components/focus/focus-analytics-widget";
 import { FocusNoteEditor } from "@/components/focus/focus-note-editor";
+import { FocusCuePopup } from "@/components/focus/focus-cue-popup";
+import { useFocusCues } from "@/hooks/use-focus-cues";
 
 type FocusMode = "admin" | "research" | "writing" | "meeting-prep" | "toastmasters";
 
@@ -35,6 +37,7 @@ const MODE_CONFIG: Record<FocusMode, {
   label: string;
   icon: React.ReactNode;
   color: string;
+  bgColor: string;
   description: string;
   agentType: string;
 }> = {
@@ -42,6 +45,7 @@ const MODE_CONFIG: Record<FocusMode, {
     label: "Admin",
     icon: <Briefcase className="w-4 h-4" />,
     color: "bg-blue-500",
+    bgColor: "bg-blue-50",
     description: "Quick tasks, emails, scheduling",
     agentType: "research-assistant"
   },
@@ -49,6 +53,7 @@ const MODE_CONFIG: Record<FocusMode, {
     label: "Research",
     icon: <FileText className="w-4 h-4" />,
     color: "bg-purple-500",
+    bgColor: "bg-purple-50",
     description: "Web search, summarization, deep dives",
     agentType: "research-assistant"
   },
@@ -56,6 +61,7 @@ const MODE_CONFIG: Record<FocusMode, {
     label: "Writing",
     icon: <Zap className="w-4 h-4" />,
     color: "bg-amber-500",
+    bgColor: "bg-amber-50",
     description: "Documents, drafts, creative work",
     agentType: "executive-coach"
   },
@@ -63,6 +69,7 @@ const MODE_CONFIG: Record<FocusMode, {
     label: "Meeting Prep",
     icon: <Users className="w-4 h-4" />,
     color: "bg-green-500",
+    bgColor: "bg-green-50",
     description: "Context briefing, risk assessment",
     agentType: "executive-coach"
   },
@@ -70,6 +77,7 @@ const MODE_CONFIG: Record<FocusMode, {
     label: "Toastmasters",
     icon: <Mic className="w-4 h-4" />,
     color: "bg-pink-500",
+    bgColor: "bg-pink-50",
     description: "Speech practice, voice coaching",
     agentType: "executive-coach"
   }
@@ -93,9 +101,13 @@ interface StoredSession {
   sessionId: string;
   startedAt: string;
   focusMode: FocusMode;
+  focusTime: number; // Store elapsed time
   taskId?: string;
   taskTitle?: string;
-  taskTimerStarted?: string;
+  taskPriority?: number;
+  taskTime?: number;
+  taskTimerRunning?: boolean;
+  noteId?: string;
 }
 
 export default function FocusPage() {
@@ -107,6 +119,7 @@ export default function FocusPage() {
   const [taskTime, setTaskTime] = useState(0);
   const [isTaskTimerRunning, setIsTaskTimerRunning] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [isRestored, setIsRestored] = useState(false);
   
   // Task state - separate selection from timer
   const [selectedTask, setSelectedTask] = useState<FocusTask | null>(null);
@@ -116,8 +129,9 @@ export default function FocusPage() {
   // AI state
   const [getStartedContent, setGetStartedContent] = useState<string | null>(null);
   const [isLoadingGetStarted, setIsLoadingGetStarted] = useState(false);
-  const [isGetStartedExpanded, setIsGetStartedExpanded] = useState(true);
   const [focusCuesEnabled, setFocusCuesEnabled] = useState(true);
+  const [isQuickStartExpanded, setIsQuickStartExpanded] = useState(true);
+  const [isCopied, setIsCopied] = useState(false);
   
   // Analytics widget
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
@@ -130,84 +144,172 @@ export default function FocusPage() {
   const taskTimerRef = useRef<NodeJS.Timeout | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const sessionStartRef = useRef<Date | null>(null);
-  const taskTimerStartRef = useRef<Date | null>(null);
+  const lastSaveRef = useRef<number>(0);
   
   const supabase = createClient();
   const { isOpen: isChatOpen } = useChatDrawer();
-  
+
   const modeConfig = MODE_CONFIG[mode];
+
+  // Focus Cues - ADHD-informed gentle coaching
+  const {
+    currentCue,
+    dismissCue,
+    snoozeCue,
+  } = useFocusCues({
+    enabled: focusCuesEnabled,
+    isFocusing,
+    focusTimeSeconds: focusTime,
+    taskTimeSeconds: taskTime,
+    taskTitle: activeTimerTask?.title || selectedTask?.title || null,
+    focusMode: mode,
+    onTakeBreak: () => {
+      // Pause the task timer but keep session running
+      setIsTaskTimerRunning(false);
+    },
+    onCompleteTask: () => {
+      if (activeTimerTask) {
+        completeTask();
+      }
+    },
+    onSwitchTask: () => {
+      // Open task drawer and clear current task
+      setIsTaskDrawerOpen(true);
+      abandonTask();
+    },
+  });
+
+  // Handle cue action
+  const handleCueAction = (action: string) => {
+    switch (action) {
+      case "take_break":
+        setIsTaskTimerRunning(false);
+        dismissCue();
+        break;
+      case "complete_task":
+        if (activeTimerTask) {
+          completeTask();
+        }
+        dismissCue();
+        break;
+      case "switch_task":
+        setIsTaskDrawerOpen(true);
+        abandonTask();
+        dismissCue();
+        break;
+      default:
+        dismissCue();
+    }
+  };
+
+  // Persist session to localStorage (throttled)
+  const persistSession = useCallback(() => {
+    const now = Date.now();
+    // Throttle saves to every 5 seconds
+    if (now - lastSaveRef.current < 5000) return;
+    lastSaveRef.current = now;
+
+    if (sessionId && isFocusing) {
+      const session: StoredSession = {
+        sessionId,
+        startedAt: sessionStartRef.current?.toISOString() || new Date().toISOString(),
+        focusMode: mode,
+        focusTime,
+        taskId: activeTimerTask?.id,
+        taskTitle: activeTimerTask?.title,
+        taskPriority: activeTimerTask?.priority,
+        taskTime,
+        taskTimerRunning: isTaskTimerRunning,
+        noteId: initialNoteId,
+      };
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+    }
+  }, [sessionId, isFocusing, mode, focusTime, activeTimerTask, taskTime, isTaskTimerRunning, initialNoteId]);
 
   // Restore session on mount
   useEffect(() => {
     const stored = localStorage.getItem(SESSION_STORAGE_KEY);
-    if (stored) {
+    if (stored && !isRestored) {
       try {
         const session: StoredSession = JSON.parse(stored);
-        const startedAt = new Date(session.startedAt);
-        const elapsed = Math.floor((Date.now() - startedAt.getTime()) / 1000);
         
         // Restore session state
         setSessionId(session.sessionId);
         setMode(session.focusMode);
-        setFocusTime(elapsed);
+        setFocusTime(session.focusTime);
         setIsFocusing(true);
-        sessionStartRef.current = startedAt;
+        sessionStartRef.current = new Date(session.startedAt);
         
         // Restore task timer if there was one
-        if (session.taskTimerStarted) {
-          const taskStarted = new Date(session.taskTimerStarted);
-          const taskElapsed = Math.floor((Date.now() - taskStarted.getTime()) / 1000);
-          setTaskTime(taskElapsed);
-          taskTimerStartRef.current = taskStarted;
-          
-          if (session.taskId && session.taskTitle) {
-            setActiveTimerTask({
-              id: session.taskId,
-              title: session.taskTitle,
-              priority: 0,
-              due_date: null,
-              content: null,
-              estimated_minutes: null,
-              ticktick_id: null,
-              ticktick_list_id: null,
-              ticktick_list_name: null,
-              ticktick_section_name: null,
-            });
-            setIsTaskTimerRunning(true);
-          }
+        if (session.taskId && session.taskTitle) {
+          const restoredTask: FocusTask = {
+            id: session.taskId,
+            title: session.taskTitle,
+            priority: session.taskPriority || 0,
+            due_date: null,
+            content: null,
+            estimated_minutes: null,
+            ticktick_id: null,
+            ticktick_list_id: null,
+            ticktick_list_name: null,
+            ticktick_section_name: null,
+          };
+          setActiveTimerTask(restoredTask);
+          setSelectedTask(restoredTask);
+          setTaskTime(session.taskTime || 0);
+          setIsTaskTimerRunning(session.taskTimerRunning || false);
         }
+        
+        // Restore note if there was one
+        if (session.noteId) {
+          setInitialNoteId(session.noteId);
+        }
+        
+        setIsRestored(true);
       } catch (e) {
         console.error("Failed to restore session:", e);
         localStorage.removeItem(SESSION_STORAGE_KEY);
+        setIsRestored(true);
       }
+    } else {
+      setIsRestored(true);
     }
-  }, []);
+  }, [isRestored]);
 
-  // Persist session to localStorage
-  const persistSession = useCallback(() => {
-    if (sessionId && sessionStartRef.current) {
-      const session: StoredSession = {
-        sessionId,
-        startedAt: sessionStartRef.current.toISOString(),
-        focusMode: mode,
-        taskId: activeTimerTask?.id,
-        taskTitle: activeTimerTask?.title,
-        taskTimerStarted: taskTimerStartRef.current?.toISOString(),
-      };
-      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
-    }
-  }, [sessionId, mode, activeTimerTask]);
-
-  // Save session whenever it changes
+  // Save session periodically and on state changes
   useEffect(() => {
-    if (isFocusing) {
+    if (isFocusing && isRestored) {
       persistSession();
     }
-  }, [isFocusing, activeTimerTask, persistSession]);
+  }, [isFocusing, focusTime, taskTime, activeTimerTask, isRestored, persistSession]);
+
+  // Save before unload
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (sessionId && isFocusing) {
+        const session: StoredSession = {
+          sessionId,
+          startedAt: sessionStartRef.current?.toISOString() || new Date().toISOString(),
+          focusMode: mode,
+          focusTime,
+          taskId: activeTimerTask?.id,
+          taskTitle: activeTimerTask?.title,
+          taskPriority: activeTimerTask?.priority,
+          taskTime,
+          taskTimerRunning: isTaskTimerRunning,
+          noteId: initialNoteId,
+        };
+        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [sessionId, isFocusing, mode, focusTime, activeTimerTask, taskTime, isTaskTimerRunning, initialNoteId]);
 
   // Focus timer - runs when focusing
   useEffect(() => {
-    if (isFocusing) {
+    if (isFocusing && isRestored) {
       focusTimerRef.current = setInterval(() => {
         setFocusTime(prev => prev + 1);
       }, 1000);
@@ -222,11 +324,11 @@ export default function FocusPage() {
         clearInterval(focusTimerRef.current);
       }
     };
-  }, [isFocusing]);
+  }, [isFocusing, isRestored]);
 
   // Task timer - runs when task timer is active
   useEffect(() => {
-    if (isTaskTimerRunning) {
+    if (isTaskTimerRunning && isRestored) {
       taskTimerRef.current = setInterval(() => {
         setTaskTime(prev => prev + 1);
       }, 1000);
@@ -241,7 +343,7 @@ export default function FocusPage() {
         clearInterval(taskTimerRef.current);
       }
     };
-  }, [isTaskTimerRunning]);
+  }, [isTaskTimerRunning, isRestored]);
 
   // Start focus session - save to time_blocks
   const startFocus = async () => {
@@ -295,7 +397,6 @@ export default function FocusPage() {
     setGetStartedContent(null);
     setSessionId(null);
     sessionStartRef.current = null;
-    taskTimerStartRef.current = null;
   };
 
   // Select a task (without starting timer)
@@ -309,7 +410,6 @@ export default function FocusPage() {
     setSelectedTask(task);
     setTaskTime(0);
     setIsTaskTimerRunning(true);
-    taskTimerStartRef.current = new Date();
     setGetStartedContent(null);
     
     // Update time_block with task
@@ -319,9 +419,6 @@ export default function FocusPage() {
         .update({ task_id: task.id })
         .eq("id", sessionId);
     }
-    
-    // Persist immediately
-    persistSession();
   };
 
   // Pause/resume task timer
@@ -334,9 +431,7 @@ export default function FocusPage() {
     setActiveTimerTask(null);
     setIsTaskTimerRunning(false);
     setTaskTime(0);
-    taskTimerStartRef.current = null;
     setGetStartedContent(null);
-    persistSession();
   };
 
   // Complete task - update Supabase AND TickTick
@@ -375,18 +470,15 @@ export default function FocusPage() {
     setSelectedTask(null);
     setIsTaskTimerRunning(false);
     setTaskTime(0);
-    taskTimerStartRef.current = null;
     setGetStartedContent(null);
-    persistSession();
   };
 
-  // Get AI "Get Started" content
+  // Get AI "Get Started" content - triggered by clicking Quick Start card
   const getStartedHelp = async () => {
     const taskForHelp = activeTimerTask || selectedTask;
     if (!taskForHelp) return;
     
     setIsLoadingGetStarted(true);
-    setIsGetStartedExpanded(true);
     
     try {
       const response = await fetch("/api/chat", {
@@ -464,6 +556,57 @@ Keep it concise and actionable - I have ADHD and need clear, direct guidance.`
     }
   };
 
+  // Parse markdown to HTML
+  const parseMarkdown = (text: string): string => {
+    return text
+      // Headers
+      .replace(/^#### (.+)$/gm, '<h4 class="font-semibold text-[#1E3D32] mt-3 mb-1">$1</h4>')
+      .replace(/^### (.+)$/gm, '<h3 class="font-semibold text-[#1E3D32] mt-3 mb-1">$1</h3>')
+      .replace(/^## (.+)$/gm, '<h2 class="font-semibold text-lg text-[#1E3D32] mt-3 mb-2">$1</h2>')
+      .replace(/^# (.+)$/gm, '<h1 class="font-bold text-xl text-[#1E3D32] mt-3 mb-2">$1</h1>')
+      // Bold and italic
+      .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong class="text-[#1E3D32]">$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      // Numbered lists
+      .replace(/^(\d+)\. (.+)$/gm, '<li class="ml-4 list-decimal my-1">$2</li>')
+      // Bullet points
+      .replace(/^[-•] (.+)$/gm, '<li class="ml-4 list-disc my-1">$1</li>')
+      // Line breaks (but not multiple consecutive ones)
+      .replace(/\n\n/g, '</p><p class="my-2">')
+      .replace(/\n/g, '<br/>')
+      // Wrap in paragraph
+      .replace(/^(.+)/, '<p class="my-2">$1</p>');
+  };
+
+  // Copy quick start content (strip markdown for plain text)
+  const copyQuickStart = async () => {
+    if (!getStartedContent) return;
+    try {
+      // Strip markdown formatting for clean plain text
+      const plainText = getStartedContent
+        .replace(/^#{1,4}\s+/gm, '')  // Remove headers (# ## ### ####)
+        .replace(/\*\*\*(.+?)\*\*\*/g, '$1')  // Remove bold+italic
+        .replace(/\*\*(.+?)\*\*/g, '$1')  // Remove bold
+        .replace(/\*(.+?)\*/g, '$1')  // Remove italic
+        .replace(/^[-•]\s+/gm, '• ')  // Normalize bullet points
+        .replace(/^\d+\.\s+/gm, (match) => match)  // Keep numbered lists
+        .trim();
+
+      await navigator.clipboard.writeText(plainText);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
+  };
+
+  // Regenerate quick start
+  const regenerateQuickStart = () => {
+    setGetStartedContent(null);
+    getStartedHelp();
+  };
+
   return (
     <div 
       ref={containerRef}
@@ -476,84 +619,102 @@ Keep it concise and actionable - I have ADHD and need clear, direct guidance.`
       {/* Header */}
       <div className="sticky top-0 z-10 bg-[#FAF8F5] border-b border-[#E8DCC4] px-6 py-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <h1 className="text-xl font-serif font-semibold text-[#1E3D32]">Focus</h1>
             
-            {/* Mode Selector */}
-            <Select value={mode} onValueChange={(v: FocusMode) => setMode(v)}>
-              <SelectTrigger className="w-40 bg-white border-[#E8DCC4] h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(MODE_CONFIG).map(([key, config]) => (
-                  <SelectItem key={key} value={key}>
-                    <div className="flex items-center gap-2">
-                      <span className={cn("w-2 h-2 rounded-full", config.color)} />
-                      {config.label}
+            {/* Mode Selector + Session Timer Group */}
+            <div className={cn(
+              "flex items-center gap-2 px-2 py-1 rounded-lg transition-colors",
+              isFocusing ? modeConfig.bgColor : ""
+            )}>
+              <Select value={mode} onValueChange={(v: FocusMode) => setMode(v)}>
+                <SelectTrigger className="w-32 bg-white border-[#E8DCC4] h-8 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(MODE_CONFIG).map(([key, config]) => (
+                    <SelectItem key={key} value={key}>
+                      <div className="flex items-center gap-2">
+                        <span className={cn("w-2 h-2 rounded-full", config.color)} />
+                        {config.label}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              {/* Session Timer - right next to mode when focusing */}
+              {isFocusing && (
+                <>
+                  <div className="flex items-center gap-1.5 px-3 h-8 bg-white rounded border border-[#E8DCC4]">
+                    <Timer className="w-3.5 h-3.5 text-[#5C7A6B]" />
+                    <span className="font-mono text-sm font-medium text-[#1E3D32]">{formatTime(focusTime)}</span>
+                  </div>
+                  <Button
+                    onClick={endFocus}
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs text-[#8B9A8F] hover:text-red-600 hover:bg-red-50"
+                  >
+                    End
+                  </Button>
+
+                  {/* Task Timer - immediately right of session timer */}
+                  {activeTimerTask && (
+                    <div className="flex items-center gap-1.5 px-3 h-8 bg-white rounded border border-[#E8DCC4] ml-2">
+                      <span className={cn("w-2 h-2 rounded-full flex-shrink-0", getPriorityColor(activeTimerTask.priority))} />
+                      <span className="text-sm text-[#1E3D32] max-w-48 truncate">
+                        {activeTimerTask.title}
+                      </span>
+                      <div className="flex items-center gap-1 px-1.5 py-0.5 bg-[#F5F0E6] rounded flex-shrink-0">
+                        <Clock className="w-3 h-3 text-[#5C7A6B]" />
+                        <span className="font-mono text-sm text-[#1E3D32]">{formatTime(taskTime)}</span>
+                      </div>
+                      <div className="flex items-center flex-shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={toggleTaskTimer}
+                          className="h-6 w-6 p-0 text-[#8B9A8F] hover:text-[#1E3D32]"
+                          title={isTaskTimerRunning ? "Pause" : "Resume"}
+                        >
+                          {isTaskTimerRunning ? (
+                            <Pause className="w-3 h-3" />
+                          ) : (
+                            <Play className="w-3 h-3" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={abandonTask}
+                          className="h-6 w-6 p-0 text-[#8B9A8F] hover:text-red-500"
+                          title="Abandon task"
+                        >
+                          <X className="w-3 h-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={completeTask}
+                          className="h-6 w-6 p-0 text-[#5C7A6B] hover:text-green-600 hover:bg-green-50"
+                          title="Complete task"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
                     </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            
+                  )}
+                </>
+              )}
+            </div>
+
             {!isFocusing && (
               <span className="text-sm text-[#8B9A8F]">{modeConfig.description}</span>
             )}
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Focus Session Timer - always visible when focusing */}
-            {isFocusing && (
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-[#2D5A47] text-white rounded-lg">
-                <Timer className="w-4 h-4" />
-                <span className="font-mono text-sm font-medium">{formatTime(focusTime)}</span>
-                <span className="text-xs opacity-70">session</span>
-              </div>
-            )}
-
-            {/* Active Task Timer in Header - only when task timer is running */}
-            {isFocusing && activeTimerTask && (
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-[#F5F0E6] rounded-lg border border-[#E8DCC4]">
-                <span className={cn("w-2 h-2 rounded-full", getPriorityColor(activeTimerTask.priority))} />
-                <span className="text-sm text-[#1E3D32] max-w-32 truncate font-medium">
-                  {activeTimerTask.title}
-                </span>
-                <div className="flex items-center gap-1 px-2 py-0.5 bg-white rounded">
-                  <Clock className="w-3 h-3 text-[#5C7A6B]" />
-                  <span className="font-mono text-sm text-[#1E3D32]">{formatTime(taskTime)}</span>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={toggleTaskTimer}
-                  className="h-7 w-7 p-0"
-                >
-                  {isTaskTimerRunning ? (
-                    <Pause className="w-3 h-3" />
-                  ) : (
-                    <Play className="w-3 h-3" />
-                  )}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={abandonTask}
-                  className="h-7 w-7 p-0 text-[#8B9A8F] hover:text-red-500"
-                  title="Abandon task"
-                >
-                  <X className="w-3 h-3" />
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={completeTask}
-                  className="h-7 bg-green-600 hover:bg-green-700 text-white text-xs"
-                >
-                  <CheckCircle2 className="w-3 h-3 mr-1" />
-                  Done
-                </Button>
-              </div>
-            )}
-            
             {/* Analytics Toggle */}
             <Popover open={isAnalyticsOpen} onOpenChange={setIsAnalyticsOpen}>
               <PopoverTrigger asChild>
@@ -583,7 +744,7 @@ Keep it concise and actionable - I have ADHD and need clear, direct guidance.`
                 "h-9",
                 focusCuesEnabled ? "text-[#2D5A47]" : "text-[#8B9A8F]"
               )}
-              title={focusCuesEnabled ? "Focus cues ON" : "Focus cues OFF"}
+              title={focusCuesEnabled ? "Focus cues ON (coming soon)" : "Focus cues OFF"}
             >
               {focusCuesEnabled ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
             </Button>
@@ -598,25 +759,6 @@ Keep it concise and actionable - I have ADHD and need clear, direct guidance.`
               {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
             </Button>
             
-            {/* Start/End Focus */}
-            {!isFocusing ? (
-              <Button 
-                onClick={startFocus}
-                className="bg-[#2D5A47] hover:bg-[#1E3D32] text-white h-9"
-              >
-                <Play className="w-4 h-4 mr-2" />
-                Start Focus
-              </Button>
-            ) : (
-              <Button 
-                onClick={endFocus}
-                variant="outline"
-                className="border-red-300 text-red-600 hover:bg-red-50 h-9"
-              >
-                <Square className="w-4 h-4 mr-2" />
-                End
-              </Button>
-            )}
           </div>
         </div>
       </div>
@@ -645,13 +787,13 @@ Keep it concise and actionable - I have ADHD and need clear, direct guidance.`
               </div>
               
               <div className="flex-1 overflow-y-auto">
-                <FocusTaskList 
+                <FocusCalendarWidget onMeetingNoteCreated={setInitialNoteId} />
+                <FocusTaskList
                   onSelectTask={handleSelectTask}
                   onStartTimer={startTaskTimer}
                   selectedTaskId={selectedTask?.id}
                   isFocusing={isFocusing}
                 />
-                <FocusCalendarWidget onMeetingNoteCreated={setInitialNoteId} />
               </div>
             </>
           ) : (
@@ -694,94 +836,116 @@ Keep it concise and actionable - I have ADHD and need clear, direct guidance.`
           ) : (
             // Focusing - show active focus UI
             <div className="flex-1 flex flex-col">
-              {/* Quick Start Section - collapsible, includes nudge text */}
-              <Card className="mb-4 border-[#E8DCC4]">
-                <CardHeader 
-                  className="pb-2 cursor-pointer py-3"
-                  onClick={() => setIsGetStartedExpanded(!isGetStartedExpanded)}
+              {/* Quick Start Card - Redesigned for dopamine/gamification */}
+              {(selectedTask || activeTimerTask) && (
+                <div
+                  className={cn(
+                    "mb-4 rounded-xl border-2 transition-all duration-200 overflow-hidden",
+                    !getStartedContent && !isLoadingGetStarted
+                      ? "border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50"
+                      : "border-[#E8DCC4] bg-white"
+                  )}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-[#D4A84B]" />
-                      <CardTitle className="text-sm">Quick Start</CardTitle>
-                      {!activeTimerTask && !selectedTask && (
-                        <span className="text-xs text-[#8B9A8F]">• Select a task to begin</span>
-                      )}
-                      {selectedTask && !activeTimerTask && (
-                        <span className="text-xs text-[#5C7A6B]">• "{selectedTask.title}" selected</span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {(selectedTask || activeTimerTask) && !getStartedContent && !isLoadingGetStarted && (
-                        <Button
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            getStartedHelp();
-                          }}
-                          className="bg-[#2D5A47] hover:bg-[#1E3D32] text-white h-7 text-xs"
-                        >
-                          <Brain className="w-3 h-3 mr-1" />
-                          AI Help
-                        </Button>
-                      )}
-                      {selectedTask && !activeTimerTask && (
-                        <Button
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            startTaskTimer(selectedTask);
-                          }}
-                          className="bg-green-600 hover:bg-green-700 text-white h-7 text-xs"
-                        >
-                          <Play className="w-3 h-3 mr-1" />
-                          Start Timer
-                        </Button>
-                      )}
-                      {isGetStartedExpanded ? (
-                        <ChevronUp className="w-4 h-4 text-[#8B9A8F]" />
-                      ) : (
-                        <ChevronDown className="w-4 h-4 text-[#8B9A8F]" />
-                      )}
-                    </div>
-                  </div>
-                </CardHeader>
-                
-                {isGetStartedExpanded && (
-                  <CardContent className="pt-0">
-                    {isLoadingGetStarted ? (
-                      <div className="flex items-center gap-2 text-[#8B9A8F]">
-                        <div className="flex gap-1">
-                          <span className="w-2 h-2 bg-[#8B9A8F] rounded-full animate-bounce" />
-                          <span className="w-2 h-2 bg-[#8B9A8F] rounded-full animate-bounce [animation-delay:0.1s]" />
-                          <span className="w-2 h-2 bg-[#8B9A8F] rounded-full animate-bounce [animation-delay:0.2s]" />
-                        </div>
-                        <span className="text-sm">Generating your game plan...</span>
-                      </div>
-                    ) : getStartedContent ? (
-                      <div 
-                        className="prose prose-sm prose-stone max-w-none [&_p]:my-2 [&_strong]:text-[#1E3D32] [&_li]:my-1"
-                        dangerouslySetInnerHTML={{ 
-                          __html: getStartedContent
-                            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-                            .replace(/\n/g, '<br/>')
-                        }}
-                      />
-                    ) : !selectedTask && !activeTimerTask ? (
-                      <p className="text-sm text-[#8B9A8F]">
-                        Select a task from the drawer to get started. Click a task to select it, then click "Start Timer" to begin tracking time.
-                      </p>
-                    ) : (
-                      <p className="text-sm text-[#8B9A8F]">
-                        Click "AI Help" for a quick brief on how to approach this task, or start your timer and dive in!
-                      </p>
+                  {/* Header - always visible */}
+                  <div
+                    onClick={!getStartedContent && !isLoadingGetStarted ? getStartedHelp : undefined}
+                    className={cn(
+                      "p-4 flex items-center justify-between",
+                      !getStartedContent && !isLoadingGetStarted && "cursor-pointer hover:bg-amber-100/50"
                     )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "w-10 h-10 rounded-full flex items-center justify-center shadow-sm",
+                        getStartedContent ? "bg-[#5C7A6B]" : "bg-amber-400"
+                      )}>
+                        <Sparkles className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-[#1E3D32]">
+                          {getStartedContent
+                            ? "Quick Start Guide"
+                            : `Get a Quick Start on "${(activeTimerTask || selectedTask)?.title}"`
+                          }
+                        </p>
+                        {!getStartedContent && !isLoadingGetStarted && (
+                          <p className="text-xs text-[#8B9A8F]">Click for AI-powered task guidance</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Action buttons - only show when content exists */}
+                    {getStartedContent && (
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => { e.stopPropagation(); copyQuickStart(); }}
+                          className="h-8 w-8 p-0 text-[#8B9A8F] hover:text-[#1E3D32]"
+                          title="Copy to clipboard"
+                        >
+                          {isCopied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => { e.stopPropagation(); regenerateQuickStart(); }}
+                          className="h-8 w-8 p-0 text-[#8B9A8F] hover:text-[#1E3D32]"
+                          title="Regenerate"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => { e.stopPropagation(); setIsQuickStartExpanded(!isQuickStartExpanded); }}
+                          className="h-8 w-8 p-0 text-[#8B9A8F] hover:text-[#1E3D32]"
+                          title={isQuickStartExpanded ? "Collapse" : "Expand"}
+                        >
+                          {isQuickStartExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Content - collapsible */}
+                  {isLoadingGetStarted && (
+                    <div className="px-4 pb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex gap-1">
+                          <span className="w-2 h-2 bg-amber-500 rounded-full animate-bounce" />
+                          <span className="w-2 h-2 bg-amber-500 rounded-full animate-bounce [animation-delay:0.1s]" />
+                          <span className="w-2 h-2 bg-amber-500 rounded-full animate-bounce [animation-delay:0.2s]" />
+                        </div>
+                        <span className="text-sm text-[#5C7A6B]">Generating your game plan...</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {getStartedContent && isQuickStartExpanded && (
+                    <div className="px-4 pb-4 border-t border-[#E8DCC4]/50">
+                      <div
+                        className="prose prose-sm prose-stone max-w-none pt-3 text-[#3D4F47] [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base [&_strong]:text-[#1E3D32] [&_li]:my-1"
+                        dangerouslySetInnerHTML={{ __html: parseMarkdown(getStartedContent) }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* No task selected prompt */}
+              {!selectedTask && !activeTimerTask && (
+                <Card className="mb-4 border-[#E8DCC4]">
+                  <CardContent className="py-4">
+                    <p className="text-sm text-[#8B9A8F] text-center">
+                      Select a task from the drawer to get started, or create a note below.
+                    </p>
                   </CardContent>
-                )}
-              </Card>
+                </Card>
+              )}
 
               {/* Note Editor Section */}
-              <FocusNoteEditor 
+              <FocusNoteEditor
                 initialNoteId={initialNoteId}
                 onNoteCreated={(noteId) => setInitialNoteId(noteId)}
               />
@@ -789,6 +953,14 @@ Keep it concise and actionable - I have ADHD and need clear, direct guidance.`
           )}
         </div>
       </div>
+
+      {/* Focus Cue Popup - ADHD-friendly gentle nudges */}
+      <FocusCuePopup
+        cue={currentCue}
+        onDismiss={dismissCue}
+        onSnooze={snoozeCue}
+        onAction={handleCueAction}
+      />
     </div>
   );
 }

@@ -945,3 +945,536 @@ Focus areas for today (in sequential order):
 5. Meeting screen build out: 463-519
 6. Claude pattern analysis agent - other workflows: 523-594
 7. Notes export/import functionality - line 360
+
+---
+
+## Session: December 17-19, 2025
+
+### Session Reference Info
+- **Date:** December 17-19, 2025
+- **Approximate Duration:** ~12 hours across 3 days
+- **Week/Day:** Week 6
+- **Build Plan Goals:** About Me Section, AI Chat Drawer Enhancements, Focus Screen Build
+
+---
+
+### What We Set Out To Do
+
+1. **About Me section** in Notes screen for AI agent context files
+2. **AI Chat Drawer enhancements** - agent instructions, memory exposure in UI
+3. **Screen ↔ AI Chat Drawer interaction fixes** - context-aware agent switching
+4. **Focus Screen build** - comprehensive focus mode with timer, tasks, notes, calendar
+
+---
+
+### Change Log Summary
+
+| Category | Change | Files |
+|----------|--------|-------|
+| **Migration** | About Me files storage table | `supabase/migrations/20251220140000_about_me_files.sql` |
+| **Migration** | Folders type column | `supabase/migrations/20251219140000_folders_type.sql` |
+| **Migration** | About Me storage | `supabase/migrations/20251219150000_about_me_storage.sql` |
+| **Migration** | Notes starred column | `supabase/migrations/2025121902_notes_starred.sql` |
+| **Migration** | TickTick list/section names | `supabase/migrations/20251220150000_ticktick_list_section_names.sql` |
+| **UI** | About Me section in Notes sidebar | `app/(authenticated)/notes/page.tsx` |
+| **UI** | Agent instructions modal | `components/chat-drawer.tsx` |
+| **UI** | Agent memory modal | `components/chat-drawer.tsx` |
+| **Context** | Screen-aware agent switching | `components/chat/chat-provider.tsx` |
+| **API** | AI task analysis endpoint | `app/api/ai/analyze-tasks/route.ts` |
+| **Focus** | Complete Focus Screen | `app/(authenticated)/focus/page.tsx` |
+| **Focus** | Focus Task List with AI analysis | `components/focus/focus-task-list.tsx` |
+| **Focus** | Focus Note Editor | `components/focus/focus-note-editor.tsx` |
+| **Focus** | Focus Calendar Widget | `components/focus/focus-calendar-widget.tsx` |
+| **Focus** | Focus Timer | `components/focus/focus-timer.tsx` |
+| **Focus** | Focus Analytics Widget | `components/focus/focus-analytics-widget.tsx` |
+| **Focus** | Focus Session Context | `components/focus/focus-session-context.tsx` |
+| **Sync** | TickTick list/section name sync | `lib/ticktick/sync.ts` |
+
+---
+
+### Daily Summary
+
+#### 1. Completed Tasks Summary
+
+**December 17-18: About Me & Chat Drawer Enhancements**
+- ✅ "About Me" section added to Notes sidebar (above AI Conversations)
+- ✅ File upload support for AI agent context (PDF, DOCX, MD, TXT)
+- ✅ Auto-detection of assessment files (Self-Compassion, Values, etc.)
+- ✅ Agent instructions modal - per-agent custom instructions
+- ✅ Agent memory modal - view saved AI insights
+- ✅ Screen-aware agent switching (dashboard→research, notes→coach, journal→therapist)
+- ✅ Auto-minimize chat drawer on screen navigation
+- ✅ Therapist agent removed from Notes (moved to Journal screen)
+
+**December 19: Focus Screen Build**
+- ✅ Focus Screen layout with collapsible sidebar
+- ✅ Focus Task List mirroring Dashboard functionality
+- ✅ AI-powered task analysis (time estimates, prioritization)
+- ✅ Focus Note Editor with note picker dropdown
+- ✅ Focus Calendar Widget with today's events
+- ✅ Meeting note creation from calendar events
+- ✅ Focus Timer (task timer + focus session timer)
+- ✅ Focus Analytics Widget (placeholder for metrics)
+- ✅ Session persistence across navigation
+- ✅ TickTick list/section name display on tasks
+
+---
+
+#### 2. Completed Tasks Drill-Down
+
+##### 2a. About Me Section (~2 hours)
+
+**What was built:**
+- Collapsible "About Me" section at top of Notes sidebar
+- File upload accepting: PDF, DOCX, Markdown, TXT
+- `about_me_files` table storing file metadata + content
+- Auto-categorization: detects "self-compassion", "values", "clifton", etc.
+- File viewer modal for reviewing uploaded content
+- Per-agent file targeting (which agents can access which files)
+
+**Database schema:**
+```sql
+about_me_files (
+  id, user_id, filename, file_type, content, 
+  category, target_agents[], created_at, updated_at
+)
+```
+
+**Agent file categories:**
+- `assessment` - Self-compassion, Values Alignment, CliftonStrengths
+- `feedback` - 360 reviews, performance feedback
+- `inspiration` - Writing samples, quotes
+- `context` - General background info
+
+---
+
+##### 2b. AI Chat Drawer Enhancements (~1.5 hours)
+
+**Agent Instructions:**
+- New `agent_instructions` table for per-agent custom prompts
+- Settings → 3-dot menu → "Agent Instructions" modal
+- Instructions included in system prompt for that agent
+- Visual indicator when custom instructions are active
+
+**Agent Memory:**
+- Memory modal shows `ai_insights` saved from conversations
+- Displays insight type, content, source, and date
+- Memory populated via "Save to Memory" button on assistant messages
+
+**Screen-Aware Switching:**
+```typescript
+CONTEXT_DEFAULT_AGENTS = {
+  dashboard: "research-assistant",
+  notes: "executive-coach",
+  focus: "executive-coach",
+  meeting: "executive-coach",
+  journal: "executive-coach", // Therapist in journal screen directly
+};
+```
+
+---
+
+##### 2c. Focus Screen Build (~6 hours)
+
+**Layout:**
+- Two-panel layout: left sidebar (tasks/calendar), right main area (timer/notes)
+- Collapsible sidebar for distraction-free focus
+- Floating AI chat button integration
+
+**Focus Task List:**
+- Mirrors Dashboard task list exactly (Today/Week/All views)
+- AI-powered analysis for each task:
+  - Time estimation with confidence levels
+  - Suggested order (prioritization)
+  - Best time of day (morning/afternoon/evening)
+- Sortable by: suggested order, priority, quickest, longest
+- "Start Timer" button on selected task
+- TickTick list/section badges on tasks
+
+**AI Task Analysis API:**
+```typescript
+// /api/ai/analyze-tasks
+// Returns per-task:
+{
+  timeEstimate: {
+    userEstimate, adjustedEstimate, aiEstimate,
+    displayMinutes, confidence, source, explanation
+  },
+  prioritization: {
+    suggestedOrder, suggestedTimeOfDay, explanation
+  }
+}
+```
+
+**Focus Note Editor:**
+- Dropdown to select existing note OR create new
+- Tiptap rich text editor
+- Auto-save on content change
+- Meeting note creation from calendar event
+- "Start Meeting Notes" button in calendar widget
+
+**Focus Timer:**
+- Task timer: tracks time on specific task
+- Session timer: tracks total focus time
+- Pause/Resume/Complete controls
+- Visual display with task title
+
+**Focus Calendar Widget:**
+- Shows today's events from Google Calendar
+- Compact event cards with time, title, location
+- Meeting link buttons (Google Meet, Zoom)
+- "Start Meeting Notes" creates linked note
+
+---
+
+##### 2d. TickTick Sync Enhancements (~30 min)
+
+**New fields synced:**
+- `ticktick_list_name` - Project/list name (e.g., "Projects", "Health")
+- `ticktick_section_name` - Section within list (e.g., "Build Second Brain")
+
+**UI display:**
+- Purple badge on task cards: "📁 List Name / Section Name"
+- Provides context for where task lives in TickTick
+
+---
+
+#### 3. Key Learnings
+
+##### Technical Learnings
+
+| Concept | What I Learned |
+|---------|----------------|
+| **Optional chaining** | `analysis?.prioritization?.suggestedOrder` prevents runtime errors when nested properties undefined |
+| **Context providers** | `FocusSessionContext` enables state sharing across Focus Screen components |
+| **Tiptap SSR** | Must use `immediatelyRender: false` and dynamic imports for editor |
+| **Timer persistence** | Using context + refs to maintain timer state across component updates |
+| **AI streaming** | Manual fetch + reader more reliable than useChat hook for streaming responses |
+
+##### ADHD-Specific Observations
+
+- **Task list parity matters** - Different behavior between Dashboard and Focus screen is confusing
+- **AI time estimates helpful** - Seeing "~30m" on tasks reduces estimation anxiety
+- **Suggested order reduces decision fatigue** - "Do #1 first" is easier than choosing
+- **Calendar integration essential** - Seeing meetings while focusing prevents time blindness
+
+---
+
+#### 4. Bug Fixes Applied
+
+| Bug | Symptom | Fix |
+|-----|---------|-----|
+| Runtime TypeError | `Cannot read properties of undefined (reading 'prioritization')` | Added optional chaining: `analysis?.prioritization?.suggestedOrder` |
+| Timer not starting | Task timer wouldn't begin | Fixed `onStartTimer` callback wiring |
+| Note editor empty | Content not loading | Added `editorKey` to force re-render on note change |
+| Calendar sync 400 | Google Calendar returning errors | Added null checks for missing event fields |
+| Duplicate AI folders | Multiple "Executive Coach" folders created | Added cleanup logic in `fetchFolders()` |
+
+---
+
+#### 5. Pending Items
+
+| Item | Priority | Notes |
+|------|----------|-------|
+| Push migration for list/section names | High | Run `npx supabase db push` then sync |
+| Focus session persistence to DB | Medium | Currently in-memory only |
+| "Get task started" AI prompt | Medium | Collapsible section with task kickoff help |
+| Focus cues system | Low | AI-driven attention reminders |
+| Journal screen | High | Next major screen to build |
+| Meeting screen | High | Transcription + real-time coaching |
+
+---
+
+#### 6. Final System State
+
+**Working:**
+- ✅ About Me file upload and storage
+- ✅ Agent instructions (per-agent custom prompts)
+- ✅ Agent memory viewing
+- ✅ Screen-aware agent switching
+- ✅ Focus Screen with full task list
+- ✅ AI task analysis (time estimates, prioritization)
+- ✅ Focus Note Editor with note picker
+- ✅ Focus Calendar Widget
+- ✅ Focus Timer (task + session)
+- ✅ Meeting note creation from events
+
+**Needs Migration Push:**
+- 🔄 TickTick list/section name fields
+
+**Next Session:**
+1. Push pending migrations
+2. Test TickTick sync for list/section display
+3. Journal screen build
+4. Meeting screen build
+
+---
+
+*End of December 17-19, 2025 session*
+
+---
+
+## Session: December 20-21, 2025
+
+### Session Reference Info
+- **Date:** December 20-21, 2025
+- **Approximate Duration:** ~10 hours across 2 days
+- **Week/Day:** Week 6-7
+- **Build Plan Goals:** Journal Screen Build, Focus Cue System, E2EE Implementation
+
+---
+
+### What We Set Out To Do
+
+1. **Journal Screen build** - Full journaling experience with encrypted entries
+2. **Focus Cue System** - ADHD-informed attention reminders during focus sessions
+3. **End-to-end encryption** for journal entries (client-side)
+4. **Photo EXIF parsing** for automatic location extraction
+
+---
+
+### Change Log Summary
+
+| Category | Change | Files |
+|----------|--------|-------|
+| **Journal** | Journal page with date navigation | `app/(authenticated)/journal/page.tsx` |
+| **Journal** | Journal Composer component | `components/journal/journal-composer.tsx` |
+| **Journal** | E2EE encryption library | `lib/journal/encryption.ts` |
+| **Journal** | EXIF parser for photo geolocation | `lib/journal/exif-parser.ts` |
+| **Journal** | Journal API endpoint | `app/api/journal/route.ts` |
+| **Focus** | Focus Cue type definitions | `lib/focus/cue-types.ts` |
+| **Focus** | Focus Cue templates (8 cue types) | `lib/focus/cue-templates.ts` |
+| **Focus** | Focus Cue evaluation engine | `lib/focus/cue-engine.ts` |
+| **Focus** | Focus Cue popup component | `components/focus/focus-cue-popup.tsx` |
+| **UI** | Calendar component v9 compatibility | `components/ui/calendar.tsx` |
+
+---
+
+### Daily Summary
+
+#### 1. Completed Tasks Summary
+
+**December 20: Journal Screen Core**
+- ✅ Journal page with date navigation (prev/next day, calendar picker)
+- ✅ Three-section journal structure (Happened, Feelings, Grateful)
+- ✅ Mood selector with 12 emotional states
+- ✅ Energy rating slider (1-10)
+- ✅ Tag system with suggestions from previous entries
+- ✅ Photo upload with EXIF geolocation extraction
+- ✅ Location field (manual entry + auto from photo)
+- ✅ Auto-save with unsaved changes indicator
+
+**December 21: E2EE + Focus Cues**
+- ✅ Client-side E2EE for journal entries (AES-256-GCM)
+- ✅ Passphrase-based encryption with PBKDF2 key derivation
+- ✅ Focus Cue system with 8 cue types
+- ✅ ADHD-informed variable intervals (prevents habituation)
+- ✅ Cue popup with gentle visual design
+- ✅ Snooze and action handling
+
+---
+
+#### 2. Completed Tasks Drill-Down
+
+##### 2a. Journal Screen Build (~4 hours)
+
+**What was built:**
+- Date-based navigation with URL state (`/journal?date=2025-12-21`)
+- Calendar picker showing which dates have entries (bold + underlined)
+- Future date blocking (can only journal today or past)
+- Three-section layout matching PRD:
+  - **What happened today?** - freeform text
+  - **How are you feeling?** - freeform text + AI mood inference
+  - **What are you grateful for?** - freeform text
+
+**Mood options:**
+| Positive | Neutral | Challenging |
+|----------|---------|-------------|
+| Calm 😌 | Unfocused 🌀 | Stressed 😰 |
+| Creative ✨ | Acceptance 🙏 | Threatened 😨 |
+| Adventurous 🚀 | | Rejected 😔 |
+| Socially Connected 💛 | | Angry 😤 |
+| Romantic 💕 | | Manic ⚡ |
+
+**Tags feature:**
+- Freeform tag input with suggestions from previous entries
+- Visual tag badges with remove button
+- Persisted across sessions for quick tagging
+
+---
+
+##### 2b. Photo Upload + EXIF Parsing (~1.5 hours)
+
+**What was built:**
+- Photo upload with preview
+- Native EXIF parser (no external dependencies)
+- Automatic GPS coordinate extraction
+- Reverse geocoding for human-readable location names
+- Date taken extraction from EXIF
+
+**EXIF parsing flow:**
+```
+1. User selects photo
+2. Read file as ArrayBuffer
+3. Parse JPEG markers for APP1 (EXIF)
+4. Extract GPS coordinates (DMS → decimal degrees)
+5. Reverse geocode via Nominatim API
+6. Auto-populate location field
+```
+
+**Supported data:**
+- Latitude/Longitude (from GPS tags)
+- Date taken (for potential date correction)
+- Location name (via reverse geocoding)
+
+---
+
+##### 2c. End-to-End Encryption (~2 hours)
+
+**What was built:**
+- Client-side encryption using Web Crypto API
+- AES-256-GCM for symmetric encryption
+- PBKDF2 key derivation (100,000 iterations)
+- Passphrase-based key management
+
+**Encryption flow:**
+```
+First time setup:
+1. User enters passphrase
+2. Generate random salt
+3. Derive key via PBKDF2
+4. Store encrypted key + salt in localStorage
+5. Store passphrase hash for verification
+
+Encrypting entry:
+1. Verify encryption initialized
+2. Get key from localStorage
+3. Generate random IV (96 bits)
+4. Encrypt content with AES-GCM
+5. Prepend IV to ciphertext
+6. Base64 encode for storage
+
+Decrypting entry:
+1. Prompt for passphrase (if not cached)
+2. Verify against stored hash
+3. Extract IV from ciphertext
+4. Decrypt with AES-GCM
+5. Display plaintext
+```
+
+**Database schema:**
+```sql
+encrypted_happened text,   -- AES-GCM encrypted
+encrypted_feelings text,   -- AES-GCM encrypted
+encrypted_grateful text,   -- AES-GCM encrypted
+-- Location/mood/tags NOT encrypted (needed for analytics)
+```
+
+---
+
+##### 2d. Focus Cue System (~2.5 hours)
+
+**What was built:**
+- 8 ADHD-informed cue types with variable intervals
+- Context-aware cue evaluation engine
+- Gentle popup UI with pastel gradients
+- Snooze functionality with configurable duration
+
+**Cue types and triggers:**
+
+| Cue Type | Trigger | Purpose |
+|----------|---------|---------|
+| `session_milestone` | 15/30/45/60 min focused | Celebrate progress |
+| `break_reminder` | After 45+ min sustained | Prevent burnout |
+| `tab_return` | Return from distraction | Welcome back, refocus |
+| `task_progress` | Every 15 min on task | Check-in, keep momentum |
+| `energy_check` | 11am, 2pm, 4pm | Time-of-day awareness |
+| `encouragement` | Random during focus | Dopamine boost |
+| `getting_started` | <5 min task progress | Overcome initiation |
+| `completion_nudge` | Task >80% estimated time | Push toward finish |
+
+**Cooldown system:**
+```typescript
+GLOBAL_CUE_COOLDOWN = 90;  // 1.5 min minimum between ANY cue
+
+CUE_COOLDOWNS = {
+  session_milestone: 300,   // 5 min
+  break_reminder: 600,      // 10 min
+  tab_return: 120,          // 2 min
+  task_progress: 900,       // 15 min
+  energy_check: 1800,       // 30 min
+  encouragement: 600,       // 10 min
+  getting_started: 300,     // 5 min
+  completion_nudge: 600,    // 10 min
+};
+```
+
+**ADHD-specific design decisions:**
+- Variable intervals with jitter (prevents pattern habituation)
+- Back-off after 3+ dismissals (respect user flow state)
+- Positive framing only (no shame, no urgency)
+- Soft colors and gentle animations (not jarring)
+- Quick snooze option (low friction)
+
+---
+
+#### 3. Key Learnings
+
+##### Technical Learnings
+
+| Concept | What I Learned |
+|---------|----------------|
+| **Web Crypto API** | Native AES-GCM encryption with PBKDF2 key derivation; no external libs needed |
+| **EXIF parsing** | JPEG files store GPS in APP1 segment; coordinates in DMS format need conversion |
+| **Reverse geocoding** | Nominatim API (OpenStreetMap) is free for low-volume use |
+| **react-day-picker v9** | Breaking changes from v8; uses `Chevron` component, different className patterns |
+| **Variable intervals** | Adding 20% jitter to cooldowns prevents ADHD brains from habituating to patterns |
+
+##### ADHD-Specific Observations
+
+- **Three-section structure works** - Less overwhelming than blank page
+- **Mood override important** - AI inference is helpful but user needs final say
+- **Tags build over time** - Suggestions reduce cognitive load for categorization
+- **Cue backs-off after dismissals** - Respects when user is in flow state
+
+---
+
+#### 4. Pending Items
+
+| Item | Priority | Notes |
+|------|----------|-------|
+| AI mood inference | Medium | Call Pattern Analyst to classify mood from text |
+| Energy blending | Medium | Combine Whoop recovery with journal energy |
+| Cue effectiveness tracking | Low | Log which cues lead to positive outcomes |
+| Photo storage to Supabase Storage | Medium | Currently URLs only; need actual upload |
+| Meeting screen build | High | Next major screen |
+
+---
+
+#### 5. Final System State
+
+**Working:**
+- ✅ Journal screen with date navigation
+- ✅ Three-section journal composer
+- ✅ Mood selector (12 options)
+- ✅ Energy rating (1-10)
+- ✅ Tag system with suggestions
+- ✅ Photo upload with EXIF geolocation
+- ✅ Client-side E2EE (AES-256-GCM)
+- ✅ Focus Cue system (8 cue types)
+- ✅ Cue popup with gentle UI
+- ✅ Variable interval cooldowns
+
+**Not Yet Implemented:**
+- ❌ AI mood inference from text
+- ❌ Photo storage (currently URL references only)
+- ❌ Cue effectiveness analytics
+
+**Next Session:**
+1. Meeting screen build
+2. AI mood inference integration
+3. Photo upload to Supabase Storage
+
+---
+
+*End of December 20-21, 2025 session*

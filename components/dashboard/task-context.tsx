@@ -13,6 +13,8 @@ export interface Task {
   dueDate: string | null;
   isCompleted: boolean;
   syncStatus: string;
+  ticktickListName: string | null;
+  ticktickSectionName: string | null;
 }
 
 interface TaskContextValue {
@@ -91,6 +93,8 @@ export function TaskProvider({ children, initialTasks, isConnected }: TaskProvid
         dueDate: task.due_date,
         isCompleted: task.completed,
         syncStatus: task.sync_status,
+        ticktickListName: task.ticktick_list_name || null,
+        ticktickSectionName: task.ticktick_section_name || null,
       }));
 
       setTasks(formattedTasks);
