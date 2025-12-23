@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
       model: anthropic("claude-sonnet-4-20250514"),
       system: EXECUTIVE_COACH_PROMPT + contextInfo,
       messages,
-      maxOutputTokens: 1024,
+      maxTokens: 1024,
     });
 
     // Save assistant message

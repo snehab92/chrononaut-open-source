@@ -109,8 +109,9 @@ export function JournalComposer({ date, onSaved }: JournalComposerProps) {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
-  // Tag suggestions from previous entries
+  // Tag suggestions from previous entries + current session
   const [allTags, setAllTags] = useState<string[]>([]);
+  const [sessionTags, setSessionTags] = useState<string[]>([]); // Tags used this session
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
 
   // Encryption state
@@ -401,10 +402,14 @@ export function JournalComposer({ date, onSaved }: JournalComposerProps) {
   };
 
   // Add tag
-  const addTag = () => {
-    const tag = tagInput.trim().toLowerCase();
+  const addTag = (tagToAdd?: string) => {
+    const tag = (tagToAdd || tagInput).trim().toLowerCase();
     if (tag && !tags.includes(tag)) {
       setTags([...tags, tag]);
+      // Track in session tags for suggestions
+      if (!sessionTags.includes(tag)) {
+        setSessionTags([...sessionTags, tag]);
+      }
     }
     setTagInput("");
   };
@@ -644,14 +649,16 @@ export function JournalComposer({ date, onSaved }: JournalComposerProps) {
               className="flex-1"
               onKeyDown={(e) => e.key === "Enter" && addTag()}
             />
-            <Button variant="outline" onClick={addTag}>
+            <Button variant="outline" onClick={() => addTag()}>
               <Tag className="w-4 h-4" />
             </Button>
           </div>
           {/* Tag suggestions dropdown */}
-          {showTagSuggestions && allTags.length > 0 && (
+          {showTagSuggestions && (allTags.length > 0 || sessionTags.length > 0) && (
             <div className="absolute top-full left-0 right-12 mt-1 bg-white border border-[#E8DCC4] rounded-lg shadow-lg z-10 max-h-40 overflow-y-auto">
-              {allTags
+              {/* Combine database tags and session tags, dedupe */}
+              {Array.from(new Set([...allTags, ...sessionTags]))
+                .sort()
                 .filter(
                   (t) =>
                     !tags.includes(t) &&
@@ -665,15 +672,14 @@ export function JournalComposer({ date, onSaved }: JournalComposerProps) {
                     className="w-full px-3 py-2 text-left text-sm hover:bg-[#F5F0E6] transition-colors"
                     onMouseDown={(e) => {
                       e.preventDefault();
-                      setTags([...tags, tag]);
-                      setTagInput("");
+                      addTag(tag);
                       setShowTagSuggestions(false);
                     }}
                   >
                     {tag}
                   </button>
                 ))}
-              {allTags.filter(
+              {Array.from(new Set([...allTags, ...sessionTags])).filter(
                 (t) =>
                   !tags.includes(t) &&
                   (tagInput === "" || t.includes(tagInput.toLowerCase()))

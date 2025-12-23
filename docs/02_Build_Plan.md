@@ -2,7 +2,20 @@
 
 **Version:** 1.0 (MVP)
 
-**Last Updated:** December 17, 2025
+**Last Updated:** December 22, 2025
+
+## Final Stretch
+
+1. AI-agent context infra: full context integration for ai-chat drawer (per agent), clear context pathways for pattern analyzer workflows in UI
+2. AI-meeting widget build out: STT - Notion-like experience. (worth it also piloting live voice mode? Deepgram has this)
+3. Dashboard copy clean up
+4. Notebook folders rest of build out - kanban/table/graph views via toggle with filter/sort/group and multi view enabled when click notebook folder name -> navigate to pages from that view a la Notion
+4. QA and get all api integrations working
+5. iOS journal shortcut and full working workflow on phone web and desktop web
+6. iOS snippet capture shortcut
+7. Security review - RLS, e2ee, MFA and read.me creation
+
+
 
 
 ---
