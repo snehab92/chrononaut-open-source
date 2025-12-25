@@ -3,25 +3,21 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-// Use require for Electron to ensure proper module loading
-const electron = require('electron');
-const { app, BrowserWindow, shell, Tray, Menu, nativeImage } = electron;
+const electron_1 = require("electron");
 const path_1 = __importDefault(require("path"));
 const window_state_1 = require("./window-state");
 // Keep references to prevent garbage collection
 let mainWindow = null;
 let tray = null;
 // Detect development mode
-const isDev = process.env.ELECTRON_IS_DEV === '1' ||
-    process.defaultApp ||
-    /node_modules[\\/]electron[\\/]/.test(process.execPath);
+const isDev = !electron_1.app.isPackaged;
 // App URL - uses Vercel deployment in production, localhost in dev
 const APP_URL = isDev
     ? 'http://localhost:3000'
-    : 'https://chrononaut.vercel.app';
+    : 'https://chrononaut-psi.vercel.app';
 function createWindow() {
     const windowState = (0, window_state_1.loadWindowState)();
-    mainWindow = new BrowserWindow({
+    mainWindow = new electron_1.BrowserWindow({
         width: windowState.width || 1400,
         height: windowState.height || 900,
         x: windowState.x,
@@ -40,18 +36,14 @@ function createWindow() {
         },
         show: false,
     });
-    // Load the app
-    mainWindow.loadURL(APP_URL);
-    // Open DevTools in development
+    mainWindow.loadURL(`${APP_URL}/dashboard`);
     if (isDev) {
         mainWindow.webContents.openDevTools();
     }
-    // Show window when ready to prevent flicker
     mainWindow.once('ready-to-show', () => {
         mainWindow?.show();
         mainWindow?.focus();
     });
-    // Save window state on move/resize
     mainWindow.on('resize', () => {
         if (mainWindow)
             (0, window_state_1.saveWindowState)(mainWindow);
@@ -60,25 +52,21 @@ function createWindow() {
         if (mainWindow)
             (0, window_state_1.saveWindowState)(mainWindow);
     });
-    // Hide to tray instead of quit on window close
     mainWindow.on('close', (event) => {
-        if (!app.isQuitting) {
+        if (!electron_1.app.isQuitting) {
             event.preventDefault();
             mainWindow?.hide();
         }
     });
-    // Handle external links - open OAuth in browser
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-        // OAuth flows open in default browser
         if (url.includes('accounts.google.com') ||
             url.includes('api.ticktick.com') ||
             url.includes('api.prod.whoop.com')) {
-            shell.openExternal(url);
+            electron_1.shell.openExternal(url);
             return { action: 'deny' };
         }
-        // Other external links open in browser
         if (!url.startsWith(APP_URL) && !url.startsWith('http://localhost')) {
-            shell.openExternal(url);
+            electron_1.shell.openExternal(url);
             return { action: 'deny' };
         }
         return { action: 'allow' };
@@ -88,79 +76,33 @@ function createWindow() {
     });
 }
 function createTray() {
-    // Use template image for macOS menu bar (automatically handles dark/light mode)
     const iconPath = isDev
         ? path_1.default.join(__dirname, '../public/icons/tray-iconTemplate.png')
         : path_1.default.join(process.resourcesPath, 'icons/tray-iconTemplate.png');
     let trayIcon;
     try {
-        trayIcon = nativeImage.createFromPath(iconPath);
-        // Resize for menu bar (16x16 is standard)
+        trayIcon = electron_1.nativeImage.createFromPath(iconPath);
         trayIcon = trayIcon.resize({ width: 16, height: 16 });
     }
     catch {
-        // Fallback: create a simple icon if file doesn't exist
-        trayIcon = nativeImage.createEmpty();
+        trayIcon = electron_1.nativeImage.createEmpty();
     }
-    tray = new Tray(trayIcon);
-    const contextMenu = Menu.buildFromTemplate([
-        {
-            label: 'Open Chrononaut',
-            click: () => {
-                mainWindow?.show();
-                mainWindow?.focus();
-            },
-        },
+    tray = new electron_1.Tray(trayIcon);
+    const contextMenu = electron_1.Menu.buildFromTemplate([
+        { label: 'Open Chrononaut', click: () => { mainWindow?.show(); mainWindow?.focus(); } },
         { type: 'separator' },
-        {
-            label: 'Dashboard',
-            click: () => {
-                mainWindow?.show();
-                mainWindow?.loadURL(`${APP_URL}/dashboard`);
-                mainWindow?.focus();
-            },
-        },
-        {
-            label: 'Focus',
-            click: () => {
-                mainWindow?.show();
-                mainWindow?.loadURL(`${APP_URL}/focus`);
-                mainWindow?.focus();
-            },
-        },
-        {
-            label: 'Journal',
-            click: () => {
-                mainWindow?.show();
-                mainWindow?.loadURL(`${APP_URL}/journal`);
-                mainWindow?.focus();
-            },
-        },
-        {
-            label: 'Notes',
-            click: () => {
-                mainWindow?.show();
-                mainWindow?.loadURL(`${APP_URL}/notes`);
-                mainWindow?.focus();
-            },
-        },
+        { label: 'Dashboard', click: () => { mainWindow?.show(); mainWindow?.loadURL(`${APP_URL}/dashboard`); mainWindow?.focus(); } },
+        { label: 'Focus', click: () => { mainWindow?.show(); mainWindow?.loadURL(`${APP_URL}/focus`); mainWindow?.focus(); } },
+        { label: 'Journal', click: () => { mainWindow?.show(); mainWindow?.loadURL(`${APP_URL}/journal`); mainWindow?.focus(); } },
+        { label: 'Notes', click: () => { mainWindow?.show(); mainWindow?.loadURL(`${APP_URL}/notes`); mainWindow?.focus(); } },
         { type: 'separator' },
-        {
-            label: 'Quit Chrononaut',
-            accelerator: 'Command+Q',
-            click: () => {
-                app.isQuitting = true;
-                app.quit();
-            },
-        },
+        { label: 'Quit Chrononaut', accelerator: 'Command+Q', click: () => { electron_1.app.isQuitting = true; electron_1.app.quit(); } },
     ]);
     tray.setToolTip('Chrononaut');
     tray.setContextMenu(contextMenu);
-    // Click on tray icon opens the app
     tray.on('click', () => {
-        if (mainWindow?.isVisible()) {
+        if (mainWindow?.isVisible())
             mainWindow.focus();
-        }
         else {
             mainWindow?.show();
             mainWindow?.focus();
@@ -170,101 +112,50 @@ function createTray() {
 function createAppMenu() {
     const template = [
         {
-            label: app.name,
+            label: electron_1.app.name,
             submenu: [
-                { role: 'about' },
-                { type: 'separator' },
-                { role: 'services' },
-                { type: 'separator' },
-                { role: 'hide' },
-                { role: 'hideOthers' },
-                { role: 'unhide' },
-                { type: 'separator' },
-                {
-                    label: 'Quit',
-                    accelerator: 'Command+Q',
-                    click: () => {
-                        app.isQuitting = true;
-                        app.quit();
-                    }
-                },
+                { role: 'about' }, { type: 'separator' }, { role: 'services' }, { type: 'separator' },
+                { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' },
+                { label: 'Quit', accelerator: 'Command+Q', click: () => { electron_1.app.isQuitting = true; electron_1.app.quit(); } },
             ],
         },
         {
             label: 'Edit',
             submenu: [
-                { role: 'undo' },
-                { role: 'redo' },
-                { type: 'separator' },
-                { role: 'cut' },
-                { role: 'copy' },
-                { role: 'paste' },
-                { role: 'pasteAndMatchStyle' },
-                { role: 'delete' },
-                { role: 'selectAll' },
+                { role: 'undo' }, { role: 'redo' }, { type: 'separator' },
+                { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' },
             ],
         },
         {
             label: 'View',
             submenu: [
-                { role: 'reload' },
-                { role: 'forceReload' },
-                { role: 'toggleDevTools' },
-                { type: 'separator' },
-                { role: 'resetZoom' },
-                { role: 'zoomIn' },
-                { role: 'zoomOut' },
-                { type: 'separator' },
+                { role: 'reload' }, { role: 'forceReload' }, { role: 'toggleDevTools' }, { type: 'separator' },
+                { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' },
                 { role: 'togglefullscreen' },
             ],
         },
         {
             label: 'Window',
-            submenu: [
-                { role: 'minimize' },
-                { role: 'zoom' },
-                { type: 'separator' },
-                { role: 'front' },
-                { role: 'close' },
-            ],
+            submenu: [{ role: 'minimize' }, { role: 'zoom' }, { type: 'separator' }, { role: 'front' }, { role: 'close' }],
         },
         {
             label: 'Navigate',
             submenu: [
-                {
-                    label: 'Dashboard',
-                    accelerator: 'Command+1',
-                    click: () => mainWindow?.loadURL(`${APP_URL}/dashboard`),
-                },
-                {
-                    label: 'Focus',
-                    accelerator: 'Command+2',
-                    click: () => mainWindow?.loadURL(`${APP_URL}/focus`),
-                },
-                {
-                    label: 'Journal',
-                    accelerator: 'Command+3',
-                    click: () => mainWindow?.loadURL(`${APP_URL}/journal`),
-                },
-                {
-                    label: 'Notes',
-                    accelerator: 'Command+4',
-                    click: () => mainWindow?.loadURL(`${APP_URL}/notes`),
-                },
+                { label: 'Dashboard', accelerator: 'Command+1', click: () => mainWindow?.loadURL(`${APP_URL}/dashboard`) },
+                { label: 'Focus', accelerator: 'Command+2', click: () => mainWindow?.loadURL(`${APP_URL}/focus`) },
+                { label: 'Journal', accelerator: 'Command+3', click: () => mainWindow?.loadURL(`${APP_URL}/journal`) },
+                { label: 'Notes', accelerator: 'Command+4', click: () => mainWindow?.loadURL(`${APP_URL}/notes`) },
             ],
         },
     ];
-    const menu = Menu.buildFromTemplate(template);
-    Menu.setApplicationMenu(menu);
+    electron_1.Menu.setApplicationMenu(electron_1.Menu.buildFromTemplate(template));
 }
-// Single instance lock - prevent multiple windows
-const gotTheLock = app.requestSingleInstanceLock();
+const gotTheLock = electron_1.app.requestSingleInstanceLock();
 if (!gotTheLock) {
-    app.quit();
+    electron_1.app.quit();
 }
 else {
-    app.on('second-instance', () => {
-        // Someone tried to run a second instance, focus our window
+    electron_1.app.on('second-instance', () => {
         if (mainWindow) {
             if (mainWindow.isMinimized())
                 mainWindow.restore();
@@ -272,15 +163,13 @@ else {
             mainWindow.focus();
         }
     });
-    app.whenReady().then(() => {
+    electron_1.app.whenReady().then(() => {
         createWindow();
         createTray();
         createAppMenu();
-        app.on('activate', () => {
-            // On macOS, re-create window when dock icon is clicked
-            if (BrowserWindow.getAllWindows().length === 0) {
+        electron_1.app.on('activate', () => {
+            if (electron_1.BrowserWindow.getAllWindows().length === 0)
                 createWindow();
-            }
             else {
                 mainWindow?.show();
                 mainWindow?.focus();
@@ -288,13 +177,11 @@ else {
         });
     });
 }
-// Keep app running when all windows are closed (macOS behavior)
-app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-        app.quit();
-    }
+electron_1.app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin')
+        electron_1.app.quit();
 });
-app.on('before-quit', () => {
-    app.isQuitting = true;
+electron_1.app.on('before-quit', () => {
+    electron_1.app.isQuitting = true;
 });
 //# sourceMappingURL=main.js.map

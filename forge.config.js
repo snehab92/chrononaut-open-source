@@ -13,6 +13,17 @@ module.exports = {
     extraResource: [
       path.join(__dirname, 'public/icons'),
     ],
+    // Only include dist-electron and package.json (no node_modules needed)
+    ignore: (filePath) => {
+      if (!filePath) return false;
+
+      // Always include root package.json and dist-electron
+      if (filePath === '/package.json') return false;
+      if (filePath.startsWith('/dist-electron')) return false;
+
+      // Ignore everything else (node_modules, src, public, .next, etc.)
+      return true;
+    },
   },
   rebuildConfig: {},
   hooks: {
