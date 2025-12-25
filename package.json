@@ -2,18 +2,16 @@
   "name": "chrononaut",
   "version": "1.0.0",
   "private": true,
-  "main": "dist-electron/main/index.js",
+  "main": "dist-electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "electron-forge start",
+    "start": "next start",
     "lint": "eslint .",
-    "electron:dev": "concurrently -k \"npm run dev\" \"wait-on http://localhost:3000 && electron-vite dev\"",
-    "electron:build": "electron-vite build",
-    "electron:pack": "electron-vite build && electron-builder --dir",
-    "electron:dist": "electron-vite build && electron-builder --mac",
-    "package": "electron-forge package",
-    "make": "electron-forge make"
+    "electron:dev": "concurrently -k \"npm run dev\" \"wait-on http://localhost:3000 && electron-forge start\"",
+    "electron:start": "electron-forge start",
+    "electron:package": "electron-forge package",
+    "electron:make": "electron-forge make"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.0.0",
