@@ -46,7 +46,7 @@ function createWindow(): void {
     show: false,
   });
 
-  mainWindow.loadURL(APP_URL);
+  mainWindow.loadURL(`${APP_URL}/dashboard`);
 
   if (isDev) {
     mainWindow.webContents.openDevTools();
