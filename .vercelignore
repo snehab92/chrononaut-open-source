@@ -1,0 +1,14 @@
+# Electron build artifacts
+out/
+dist-electron/
+
+# Node modules (Vercel installs these)
+node_modules/
+
+# Local development
+.next/
+.DS_Store
+
+# Documentation and non-essential files
+docs/
+*.md
