@@ -28,11 +28,14 @@ async function getInitialData(supabase: any, userId: string) {
         id: task.ticktick_id || task.id,
         localId: task.id,
         title: task.title,
+        content: task.content || null,
         projectId: task.ticktick_list_id,
         priority: mapLocalPriority(task.priority),
         dueDate: task.due_date,
         isCompleted: task.completed,
         syncStatus: task.sync_status,
+        ticktickListName: task.ticktick_list_name || null,
+        ticktickSectionName: task.ticktick_section_name || null,
       }));
     }
   }
@@ -41,6 +44,8 @@ async function getInitialData(supabase: any, userId: string) {
   let events: any[] = [];
   if (isGoogleCalendarConnected) {
     const now = new Date();
+    const startOfToday = new Date(now);
+    startOfToday.setHours(0, 0, 0, 0); // Include all of today's events, not just future ones
     const thirtyDaysFromNow = new Date(now);
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
@@ -48,7 +53,7 @@ async function getInitialData(supabase: any, userId: string) {
       .from("calendar_events")
       .select("*")
       .eq("user_id", userId)
-      .gte("start_time", now.toISOString())
+      .gte("start_time", startOfToday.toISOString())
       .lte("start_time", thirtyDaysFromNow.toISOString())
       .neq("status", "cancelled")
       .order("start_time", { ascending: true });

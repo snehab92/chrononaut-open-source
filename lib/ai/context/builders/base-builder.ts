@@ -20,6 +20,7 @@ import {
   type ReferenceContext,
   type AboutMeFile,
   type SavedMemory,
+  type AiInsight,
   type TaskSummary,
   type CalendarEventSummary,
   getContextConfig,
@@ -135,8 +136,8 @@ export abstract class BaseContextBuilder {
         .eq("user_id", userId)
         .eq("agent_type", this.agentType)
         .eq("is_active", true)
-        .single(),
-      supabase.from("profiles").select("core_values").eq("id", userId).single(),
+        .maybeSingle(),
+      supabase.from("profiles").select("core_values").eq("id", userId).maybeSingle(),
     ]);
 
     const context: StaticContext = {
@@ -152,7 +153,7 @@ export abstract class BaseContextBuilder {
   }
 
   /**
-   * Build persistent context layer (about me files + saved memories)
+   * Build persistent context layer (about me files + saved memories + insights)
    */
   protected async buildPersistentLayer(userId: string): Promise<PersistentContext> {
     const supabase = await createClient();
@@ -162,6 +163,8 @@ export abstract class BaseContextBuilder {
       aboutMeFiles: [],
       savedMemories: [],
       assessmentHighlights: [],
+      aiInsights: [],
+      projectInstructions: undefined,
     };
 
     const promises: Promise<void>[] = [];
@@ -189,12 +192,20 @@ export abstract class BaseContextBuilder {
     if (sources.includes("saved_memories")) {
       promises.push(
         (async () => {
+          // Agent-specific memories (like Claude Desktop project memory)
+          // Join through ai_conversations to filter by agent_type
           const { data } = await supabase
             .from("ai_messages")
-            .select("id, content, created_at")
+            .select(`
+              id,
+              content,
+              created_at,
+              conversation:ai_conversations!inner(agent_type)
+            `)
             .eq("saved_to_memory", true)
+            .eq("ai_conversations.agent_type", this.agentType)
             .order("created_at", { ascending: false })
-            .limit(10);
+            .limit(15);
           results.savedMemories = (data || []).map((m: Record<string, unknown>) => ({
             id: m.id as string,
             content: m.content as string,
@@ -233,6 +244,68 @@ export abstract class BaseContextBuilder {
                   .join(", ")}`,
               },
             ];
+          }
+        })()
+      );
+    }
+
+    // Fetch Pattern Analyst insights from ai_insights table
+    if (sources.includes("pattern_insights")) {
+      promises.push(
+        (async () => {
+          const { data } = await supabase
+            .from("ai_insights")
+            .select("id, insight_type, summary, patterns_detected, recommendations, extracted_text, source_type, created_at")
+            .eq("user_id", userId)
+            .order("created_at", { ascending: false })
+            .limit(20);
+          results.aiInsights = (data || []).map((i: Record<string, unknown>) => {
+            // Construct content from available fields
+            // Prioritize extracted_text (chat memories), then summary + patterns
+            let content = "";
+            if (i.extracted_text) {
+              content = i.extracted_text as string;
+            } else {
+              const summary = i.summary as string || "";
+              const patterns = (i.patterns_detected as string[]) || [];
+              const recommendations = (i.recommendations as string[]) || [];
+
+              content = summary;
+              if (patterns.length > 0) {
+                content += (content ? " | " : "") + "Patterns: " + patterns.join(", ");
+              }
+              if (recommendations.length > 0) {
+                content += (content ? " | " : "") + "Recommendations: " + recommendations.slice(0, 2).join("; ");
+              }
+            }
+
+            return {
+              id: i.id as string,
+              insightType: i.insight_type as string,
+              content: content,
+              sourceType: (i.source_type as string) || "pattern_analysis",
+              createdAt: new Date(i.created_at as string),
+            };
+          });
+        })()
+      );
+    }
+
+    // Fetch project-specific instructions (agent instructions beyond the base system prompt)
+    if (sources.includes("project_instructions")) {
+      promises.push(
+        (async () => {
+          // This fetches any additional project-level context or instructions
+          // Currently pulls from agent_instructions if there are project-specific ones
+          const { data } = await supabase
+            .from("agent_instructions")
+            .select("instructions")
+            .eq("user_id", userId)
+            .eq("agent_type", this.agentType)
+            .eq("is_active", true)
+            .maybeSingle();
+          if (data?.instructions) {
+            results.projectInstructions = data.instructions;
           }
         })()
       );
@@ -521,11 +594,39 @@ export abstract class BaseContextBuilder {
 
     // Add persistent context
     if (layers.persistent) {
+      // About Me Files (project files)
+      if (layers.persistent.aboutMeFiles.length > 0) {
+        prompt += `\n\n## About the User (Project Files)\n`;
+        prompt += layers.persistent.aboutMeFiles
+          .map((f) => {
+            let content = `### ${f.filename}`;
+            if (f.category) content += ` (${f.category})`;
+            if (f.description) content += `\n${f.description}`;
+            if (f.extractedContent) content += `\n${f.extractedContent}`;
+            return content;
+          })
+          .join("\n\n");
+      }
+
+      // Saved memories from conversations
       if (layers.persistent.savedMemories.length > 0) {
         prompt += `\n\n## Remembered Context\n`;
         prompt += layers.persistent.savedMemories
           .map((m) => `- ${m.content}`)
           .join("\n");
+      }
+
+      // AI Insights (project memory)
+      if (layers.persistent.aiInsights.length > 0) {
+        prompt += `\n\n## User Insights & Patterns\n`;
+        prompt += layers.persistent.aiInsights
+          .map((i) => `- [${i.insightType}] ${i.content}`)
+          .join("\n");
+      }
+
+      // Project-specific instructions
+      if (layers.persistent.projectInstructions) {
+        prompt += `\n\n## Project Instructions\n${layers.persistent.projectInstructions}`;
       }
 
       if (layers.persistent.assessmentHighlights.length > 0) {

@@ -41,6 +41,17 @@ const EXERCISE_LOW_GOAL_MINUTES = 150; // 2.5 hours zones 1-3
 const EXERCISE_HIGH_GOAL_MINUTES = 15; // 15 min zones 4-5
 const MEDITATION_DAILY_GOAL = 1;
 
+// Get color based on percentage of goal (red 0-25%, yellow 25-75%, green 75-100%)
+function getGoalColor(percentage: number): { dot: string; bar: string } {
+  if (percentage >= 75) {
+    return { dot: "bg-green-500", bar: "bg-green-500" };
+  } else if (percentage >= 25) {
+    return { dot: "bg-yellow-500", bar: "bg-yellow-500" };
+  } else {
+    return { dot: "bg-red-500", bar: "bg-red-500" };
+  }
+}
+
 // Get current week (Sunday-Saturday)
 function getCurrentWeekDates(): string[] {
   const now = new Date();
@@ -279,7 +290,7 @@ export function HabitsSection({ isWhoopConnected, healthMetrics, workouts }: Hab
         {/* Sleep Card */}
         <button
           onClick={() => setSleepModalOpen(true)}
-          className="group p-4 rounded-xl bg-gradient-to-br from-white to-[#F5F0E6] border border-[#E8DCC4] shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 text-left"
+          className="group p-4 rounded-xl bg-gradient-to-br from-white to-[#F5F0E6] border border-[#E8DCC4] shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 text-left flex flex-col"
         >
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -292,36 +303,87 @@ export function HabitsSection({ isWhoopConnected, healthMetrics, workouts }: Hab
           </div>
           
           {isWhoopConnected && healthMetrics.length > 0 ? (
-            <>
-              <div className="flex items-baseline gap-1 mb-1">
-                <span className="text-2xl font-serif font-semibold text-[#1E3D32]">
-                  {sleepData.streak}
-                </span>
-                <span className="text-sm text-[#5C7A6B]">day streak</span>
-                {sleepData.streak > 0 && <Flame className="h-4 w-4 text-orange-500 ml-1" />}
+            <div className="flex-1 flex flex-col">
+              {/* Content area */}
+              <div className="space-y-3">
+                {/* Streak */}
+                <div className="flex items-center gap-2">
+                  {sleepData.streak > 0 && <Flame className="h-4 w-4 text-orange-500" />}
+                  <span className="text-lg font-serif font-semibold text-[#1E3D32]">
+                    {sleepData.streak} day streak
+                  </span>
+                </div>
+
+                {/* Sleep Hours Progress */}
+                {(() => {
+                  const hoursPercent = (sleepData.avgHours / SLEEP_HOURS_GOAL) * 100;
+                  const hoursColor = getGoalColor(hoursPercent);
+                  return (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className={cn("w-2.5 h-2.5 rounded-full", hoursColor.dot)} />
+                          <span className="text-xs font-medium text-[#5C7A6B]">Hours</span>
+                        </div>
+                        <span className="text-sm font-semibold text-[#1E3D32]">
+                          {sleepData.avgHours.toFixed(1)} / {SLEEP_HOURS_GOAL}h
+                        </span>
+                      </div>
+                      <div className="h-2 bg-[#E8DCC4] rounded-full overflow-hidden">
+                        <div
+                          className={cn("h-full transition-all duration-500", hoursColor.bar)}
+                          style={{ width: `${Math.min(100, hoursPercent)}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Consistency Progress */}
+                {(() => {
+                  const consistencyPercent = (sleepData.avgConsistency / SLEEP_CONSISTENCY_GOAL) * 100;
+                  const consistencyColor = getGoalColor(consistencyPercent);
+                  return (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className={cn("w-2.5 h-2.5 rounded-full", consistencyColor.dot)} />
+                          <span className="text-xs font-medium text-[#5C7A6B]">Consistency</span>
+                        </div>
+                        <span className="text-sm font-semibold text-[#1E3D32]">
+                          {sleepData.avgConsistency.toFixed(0)}%
+                        </span>
+                      </div>
+                      <div className="h-2 bg-[#E8DCC4] rounded-full overflow-hidden">
+                        <div
+                          className={cn("h-full transition-all duration-500", consistencyColor.bar)}
+                          style={{ width: `${Math.min(100, consistencyPercent)}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
-              <p className="text-xs text-[#8B9A8F] mb-2">
-                {sleepData.avgHours.toFixed(1)}h avg · {sleepData.avgConsistency.toFixed(0)}% consistency
-              </p>
-            </>
+
+              {/* Divider + Goal - pushed to bottom */}
+              <div className="pt-3 mt-auto border-t border-[#E8DCC4]">
+                <p className="text-xs text-[#5C7A6B]">
+                  <span className="font-medium">Goal:</span> {SLEEP_HOURS_GOAL}+ hours, ≥{SLEEP_CONSISTENCY_GOAL}% consistency
+                </p>
+              </div>
+            </div>
           ) : (
-            <>
+            <div className="flex-1 flex flex-col">
               <div className="text-2xl font-serif font-semibold text-[#1E3D32] mb-1">--</div>
               <p className="text-xs text-[#8B9A8F] mb-2">Connect Whoop to track</p>
-            </>
+            </div>
           )}
-          
-          <div className="pt-2 border-t border-[#E8DCC4]">
-            <p className="text-xs text-[#5C7A6B]">
-              <span className="font-medium">Goal:</span> {SLEEP_HOURS_GOAL}h + ≥{SLEEP_CONSISTENCY_GOAL}% consistency
-            </p>
-          </div>
         </button>
 
         {/* Exercise Card */}
         <button
           onClick={() => setExerciseModalOpen(true)}
-          className="group p-4 rounded-xl bg-gradient-to-br from-white to-[#F5F0E6] border border-[#E8DCC4] shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 text-left"
+          className="group p-4 rounded-xl bg-gradient-to-br from-white to-[#F5F0E6] border border-[#E8DCC4] shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 text-left flex flex-col"
         >
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -332,42 +394,76 @@ export function HabitsSection({ isWhoopConnected, healthMetrics, workouts }: Hab
             </div>
             <ChevronRight className="h-4 w-4 text-[#8B9A8F] group-hover:text-[#5C7A6B] transition-colors" />
           </div>
-          
+
           {isWhoopConnected && workouts.length > 0 ? (
-            <>
-              <div className="flex items-baseline gap-1 mb-1">
-                <span className="text-2xl font-serif font-semibold text-[#1E3D32]">
-                  {Math.round(exerciseData.lowZoneMinutes)}
-                </span>
-                <span className="text-sm text-[#5C7A6B]">/ {EXERCISE_LOW_GOAL_MINUTES} min Z1-3</span>
+            <div className="flex-1 flex flex-col">
+              {/* Content area */}
+              <div className="space-y-3">
+                {/* Workout days summary - matches Sleep's streak row */}
+                <div className="flex items-center gap-2">
+                  {exerciseData.workoutDays >= 3 && <Flame className="h-4 w-4 text-orange-500" />}
+                  <span className="text-lg font-serif font-semibold text-[#1E3D32]">
+                    {exerciseData.workoutDays} workout days
+                  </span>
+                </div>
+
+                {/* Zones 1-3 (Green) */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                      <span className="text-xs font-medium text-[#5C7A6B]">Zones 1-3</span>
+                    </div>
+                    <span className="text-sm font-semibold text-[#1E3D32]">
+                      {Math.round(exerciseData.lowZoneMinutes)} / {EXERCISE_LOW_GOAL_MINUTES} min
+                    </span>
+                  </div>
+                  <div className="h-2 bg-[#E8DCC4] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-green-500 transition-all duration-500"
+                      style={{ width: `${Math.min(100, (exerciseData.lowZoneMinutes / EXERCISE_LOW_GOAL_MINUTES) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Zones 4-5 (Orange) */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-orange-500" />
+                      <span className="text-xs font-medium text-[#5C7A6B]">Zones 4-5</span>
+                    </div>
+                    <span className="text-sm font-semibold text-[#1E3D32]">
+                      {Math.round(exerciseData.highZoneMinutes)} / {EXERCISE_HIGH_GOAL_MINUTES} min
+                    </span>
+                  </div>
+                  <div className="h-2 bg-[#E8DCC4] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-orange-500 transition-all duration-500"
+                      style={{ width: `${Math.min(100, (exerciseData.highZoneMinutes / EXERCISE_HIGH_GOAL_MINUTES) * 100)}%` }}
+                    />
+                  </div>
+                </div>
               </div>
-              <div className="flex items-baseline gap-1 mb-1">
-                <span className="text-2xl font-serif font-semibold text-[#1E3D32]">
-                  {Math.round(exerciseData.highZoneMinutes)}
-                </span>
-                <span className="text-sm text-[#5C7A6B]">/ {EXERCISE_HIGH_GOAL_MINUTES} min Z4-5</span>
+
+              {/* Divider + Goal - pushed to bottom */}
+              <div className="pt-3 mt-auto border-t border-[#E8DCC4]">
+                <p className="text-xs text-[#5C7A6B]">
+                  <span className="font-medium">Goal:</span> {EXERCISE_LOW_GOAL_MINUTES} min zones 1-3, {EXERCISE_HIGH_GOAL_MINUTES} min zones 4-5
+                </p>
               </div>
-              <p className="text-xs text-[#8B9A8F] mb-2">
-                {exerciseData.workoutDays} workout day{exerciseData.workoutDays !== 1 ? 's' : ''}
-              </p>
-            </>
+            </div>
           ) : (
-            <>
+            <div className="flex-1 flex flex-col">
               <div className="text-2xl font-serif font-semibold text-[#1E3D32] mb-1">--</div>
               <p className="text-xs text-[#8B9A8F] mb-2">Connect Whoop to track</p>
-            </>
+            </div>
           )}
-          
-          <div className="pt-2 border-t border-[#E8DCC4]">
-            <p className="text-xs text-[#5C7A6B]">
-              <span className="font-medium">Goal:</span> 2.5h Z1-3 + 15min Z4-5
-            </p>
-          </div>
         </button>
 
         {/* Meditation Card */}
         <div
-          className="group p-4 rounded-xl bg-gradient-to-br from-white to-[#F5F0E6] border border-[#E8DCC4] shadow-sm hover:shadow-md transition-all duration-300 text-left"
+          className="group p-4 rounded-xl bg-gradient-to-br from-white to-[#F5F0E6] border border-[#E8DCC4] shadow-sm hover:shadow-md transition-all duration-300 text-left flex flex-col"
         >
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -383,37 +479,43 @@ export function HabitsSection({ isWhoopConnected, healthMetrics, workouts }: Hab
               <ChevronRight className="h-4 w-4 text-[#8B9A8F] group-hover:text-[#5C7A6B]" />
             </button>
           </div>
-          
-          <div className="flex items-baseline gap-1 mb-1">
-            <span className="text-2xl font-serif font-semibold text-[#1E3D32]">
-              {meditationData.daysThisWeek}
-            </span>
-            <span className="text-sm text-[#5C7A6B]">days this week</span>
-            {meditationData.streak >= 3 && <Flame className="h-4 w-4 text-orange-500 ml-1" />}
-          </div>
-          <p className="text-xs text-[#8B9A8F] mb-3">
-            {meditationData.streak > 0 ? `${meditationData.streak} day streak` : 'Start your streak!'}
-          </p>
-          
-          {/* Today's meditation button */}
-          <button
-            onClick={handleMeditationToggle}
-            disabled={isLoggingMeditation}
-            className={cn(
-              "w-full py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200",
-              todayMeditated
-                ? "bg-purple-100 text-purple-700 border border-purple-200"
-                : "bg-[#2D5A47] text-white hover:bg-[#1E3D32]",
-              isLoggingMeditation && "opacity-50 cursor-not-allowed"
-            )}
-          >
-            {isLoggingMeditation ? "..." : todayMeditated ? "✓ Meditated today" : "Log meditation"}
-          </button>
-          
-          <div className="pt-3 mt-3 border-t border-[#E8DCC4]">
-            <p className="text-xs text-[#5C7A6B]">
-              <span className="font-medium">Goal:</span> Meditate 1x daily
-            </p>
+
+          <div className="flex-1 flex flex-col">
+            {/* Content area */}
+            <div className="space-y-3">
+              {/* Summary stat - matches Sleep/Exercise pattern */}
+              <div className="flex items-center gap-2">
+                {meditationData.streak >= 3 && <Flame className="h-4 w-4 text-orange-500" />}
+                <span className="text-lg font-serif font-semibold text-[#1E3D32]">
+                  {meditationData.daysThisWeek} days this week
+                </span>
+              </div>
+              <p className="text-xs text-[#8B9A8F]">
+                {meditationData.streak > 0 ? `${meditationData.streak} day streak` : 'Start your streak!'}
+              </p>
+
+              {/* Today's meditation button */}
+              <button
+                onClick={handleMeditationToggle}
+                disabled={isLoggingMeditation}
+                className={cn(
+                  "w-full py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200",
+                  todayMeditated
+                    ? "bg-purple-100 text-purple-700 border border-purple-200"
+                    : "bg-[#2D5A47] text-white hover:bg-[#1E3D32]",
+                  isLoggingMeditation && "opacity-50 cursor-not-allowed"
+                )}
+              >
+                {isLoggingMeditation ? "..." : todayMeditated ? "✓ Meditated today" : "Log meditation"}
+              </button>
+            </div>
+
+            {/* Divider + Goal - pushed to bottom */}
+            <div className="pt-3 mt-auto border-t border-[#E8DCC4]">
+              <p className="text-xs text-[#5C7A6B]">
+                <span className="font-medium">Goal:</span> Meditate 1x daily
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -495,24 +597,30 @@ export function HabitsSection({ isWhoopConnected, healthMetrics, workouts }: Hab
               <>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="p-3 rounded-lg bg-[#F5F0E6]">
-                    <p className="text-xs text-[#5C7A6B] mb-1">Low Intensity (Z1-3)</p>
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                      <p className="text-xs text-[#5C7A6B]">Zones 1-3</p>
+                    </div>
                     <p className="text-xl font-serif font-semibold text-[#1E3D32]">
                       {Math.round(exerciseData.lowZoneMinutes)} / {EXERCISE_LOW_GOAL_MINUTES} min
                     </p>
                     <div className="mt-2 h-2 bg-[#E8DCC4] rounded-full overflow-hidden">
-                      <div 
+                      <div
                         className="h-full bg-green-500 transition-all"
                         style={{ width: `${Math.min(100, (exerciseData.lowZoneMinutes / EXERCISE_LOW_GOAL_MINUTES) * 100)}%` }}
                       />
                     </div>
                   </div>
                   <div className="p-3 rounded-lg bg-[#F5F0E6]">
-                    <p className="text-xs text-[#5C7A6B] mb-1">High Intensity (Z4-5)</p>
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-2.5 h-2.5 rounded-full bg-orange-500" />
+                      <p className="text-xs text-[#5C7A6B]">Zones 4-5</p>
+                    </div>
                     <p className="text-xl font-serif font-semibold text-[#1E3D32]">
                       {Math.round(exerciseData.highZoneMinutes)} / {EXERCISE_HIGH_GOAL_MINUTES} min
                     </p>
                     <div className="mt-2 h-2 bg-[#E8DCC4] rounded-full overflow-hidden">
-                      <div 
+                      <div
                         className="h-full bg-orange-500 transition-all"
                         style={{ width: `${Math.min(100, (exerciseData.highZoneMinutes / EXERCISE_HIGH_GOAL_MINUTES) * 100)}%` }}
                       />
@@ -521,8 +629,8 @@ export function HabitsSection({ isWhoopConnected, healthMetrics, workouts }: Hab
                 </div>
 
                 <div className="space-y-3 pt-3 border-t border-[#E8DCC4]">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-[#5C7A6B]">Workout Days</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-[#5C7A6B]">Workout Days:</span>
                     <span className="font-medium text-[#1E3D32]">{exerciseData.workoutDays}</span>
                   </div>
                   {exerciseData.workoutTypes.length > 0 && (

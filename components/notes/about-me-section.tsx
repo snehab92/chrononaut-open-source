@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { 
+import {
   Upload, FileText, Trash2, Download, Eye,
-  ChevronDown, ChevronUp, MoreVertical, Settings, Info, Plus
+  ChevronDown, ChevronUp, MoreVertical, Settings, Plus, Info
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -372,7 +372,8 @@ export function AboutMeSection() {
             type="file"
             accept=".pdf,.docx,.xlsx,.md,.markdown,.txt"
             onChange={handleFileSelect}
-            className="hidden"
+            className="sr-only absolute -left-[9999px]"
+            tabIndex={-1}
           />
           {/* Collapse toggle */}
           <button
@@ -504,27 +505,22 @@ export function AboutMeSection() {
             </div>
           )}
 
-          {/* Info tooltip */}
-          <div className="px-3 py-2 flex items-start gap-2 text-[10px] text-[#8B9A8F]">
-            <Info className="w-3 h-3 flex-shrink-0 mt-0.5" />
-            <span>Files are used as context for AI agents. Set agent access to control which agents see each file.</span>
-          </div>
         </div>
       )}
 
       {/* Upload Dialog */}
       <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md overflow-hidden">
           <DialogHeader>
             <DialogTitle>Upload About Me File</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="space-y-4 overflow-hidden">
             {/* File info */}
             {selectedFile && (
-              <div className="p-3 rounded-lg bg-[#F5F0E6] flex items-center gap-2">
-                <FileText className="w-5 h-5 text-[#5C7A6B]" />
-                <div className="flex-1 min-w-0">
+              <div className="p-3 rounded-lg bg-[#F5F0E6] flex items-center gap-2 overflow-hidden">
+                <FileText className="w-5 h-5 text-[#5C7A6B] flex-shrink-0" />
+                <div className="flex-1 min-w-0 overflow-hidden">
                   <p className="text-sm font-medium truncate">{selectedFile.name}</p>
                   <p className="text-xs text-[#8B9A8F]">{formatFileSize(selectedFile.size)}</p>
                 </div>
@@ -602,6 +598,7 @@ export function AboutMeSection() {
                 value={uploadDescription}
                 onChange={(e) => setUploadDescription(e.target.value)}
                 placeholder="Brief description of this file..."
+                className="w-full"
               />
             </div>
           </div>

@@ -7,7 +7,7 @@ const IV_LENGTH = 12; // 96 bits for GCM
 const SALT_LENGTH = 16;
 const PBKDF2_ITERATIONS = 100000;
 
-// Storage key for encrypted encryption key
+// Storage keys
 const ENCRYPTED_KEY_STORAGE = "chrononaut_journal_key";
 const KEY_HASH_STORAGE = "chrononaut_key_hash";
 

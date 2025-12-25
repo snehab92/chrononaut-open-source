@@ -15,11 +15,13 @@ export interface CalendarEvent {
   organizerEmail: string | null;
   status: string;
   meetingLink: string | null;
+  linkedNoteId?: string; // Track if note already exists
 }
 
 interface CalendarContextValue {
   events: CalendarEvent[];
   refreshEvents: () => Promise<void>;
+  updateEvent: (googleEventId: string, updates: Partial<CalendarEvent>) => void;
 }
 
 const CalendarContext = createContext<CalendarContextValue | null>(null);
@@ -43,7 +45,7 @@ export function CalendarProvider({ children, initialEvents, isConnected }: Calen
 
   const refreshEvents = useCallback(async () => {
     if (!isConnected) return;
-    
+
     try {
       const response = await fetch("/api/calendar/events");
       if (response.ok) {
@@ -55,8 +57,16 @@ export function CalendarProvider({ children, initialEvents, isConnected }: Calen
     }
   }, [isConnected]);
 
+  const updateEvent = useCallback((googleEventId: string, updates: Partial<CalendarEvent>) => {
+    setEvents(prev => prev.map(event =>
+      event.googleEventId === googleEventId
+        ? { ...event, ...updates }
+        : event
+    ));
+  }, []);
+
   return (
-    <CalendarContext.Provider value={{ events, refreshEvents }}>
+    <CalendarContext.Provider value={{ events, refreshEvents, updateEvent }}>
       {children}
     </CalendarContext.Provider>
   );

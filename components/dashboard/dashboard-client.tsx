@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { TaskProvider, Task } from "./task-context";
 import { CalendarProvider, CalendarEvent } from "./calendar-context";
 import { CombinedSyncStatus } from "./combined-sync-status";
@@ -9,6 +10,7 @@ import { MetricsPanel } from "./metrics-panel";
 import { useTaskContext } from "./task-context";
 import { useCalendarContext } from "./calendar-context";
 import { useChatDrawer } from "@/components/chat/chat-provider";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 interface DashboardClientProps {
@@ -53,6 +55,34 @@ export function DashboardClient({
   journalEntries,
 }: DashboardClientProps) {
   const { isOpen: isChatOpen } = useChatDrawer();
+
+  // Detect and save user's timezone on mount
+  useEffect(() => {
+    async function saveTimezone() {
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (!timezone) return;
+
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Update timezone in profile (only if different to avoid unnecessary writes)
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("timezone")
+        .eq("id", user.id)
+        .single();
+
+      if (profile?.timezone !== timezone) {
+        await supabase
+          .from("profiles")
+          .update({ timezone })
+          .eq("id", user.id);
+      }
+    }
+
+    saveTimezone();
+  }, []);
 
   return (
     <TaskProvider initialTasks={initialTasks} isConnected={isTickTickConnected}>

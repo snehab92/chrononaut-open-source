@@ -12,6 +12,22 @@ A log of significant technical and architectural decisions made during developme
 | SCHEMA-002 | 2025-12-01 | Location fields on notes table for map view | ✅ Implemented |
 | INFRA-001 | 2025-12-01 | Disable cacheComponents for auth compatibility | ✅ Implemented |
 | DESIGN-001 | 2025-12-01 | Warm color palette (forest green, mustard, cream) | ✅ Implemented |
+| AI-008 | 2025-12-23 | No RAG - use SQL queries for structured data | ✅ Implemented |
+| AI-009 | 2025-12-23 | No LangChain - custom 80-line orchestrator | ✅ Implemented |
+| AI-010 | 2025-12-23 | Token efficiency: Haiku/Sonnet selection, caching, budget tracking | ✅ Implemented |
+| INFRA-002 | 2025-12-23 | Vercel Cron for scheduled jobs (morning insight, weekly review) | ✅ Implemented |
+| DEPS-002 | 2025-12-23 | AI SDK v4 migration (maxTokens, toTextStreamResponse) | ✅ Implemented |
+| JOURNAL-004 | 2025-12-24 | Fixed four-view journal architecture (Entry Feed, Photo of Day, Mood Tracker, Weekly Reviews) | ✅ Implemented |
+| NOTES-002 | 2025-12-24 | Notion-inspired folder views (Database, Kanban, Gallery) with per-folder config | ✅ Implemented |
+| NOTES-003 | 2025-12-24 | Folder templates system with optional AI prompt | ✅ Implemented |
+| ASSESS-001 | 2025-12-25 | In-app assessment questionnaires with wizard-style interface | ✅ Implemented |
+| ASSESS-002 | 2025-12-25 | Values Alignment Score computation (AI-powered, 30-day rolling window) | ✅ Implemented |
+| ASSESS-003 | 2025-12-25 | Executive Function quarterly tracking with reminder system | ✅ Implemented |
+| TRANSCRIBE-001 | 2025-12-25 | Deepgram over Whisper for real-time transcription | ✅ Implemented |
+| TRANSCRIBE-002 | 2025-12-25 | Dual audio capture architecture (mic + BlackHole system audio) | ✅ Implemented |
+| TRANSCRIBE-003 | 2025-12-25 | Speaker diarization with editable labels | ✅ Implemented |
+| UI-005 | 2025-12-24 | View state in URL (useSearchParams for bookmarkable views) | ✅ Implemented |
+| SCHEMA-005 | 2025-12-25 | Realignment actions table for values alignment accountability | ✅ Implemented |
 
 ---
 
@@ -598,28 +614,29 @@ CONTEXT_DEFAULT_AGENTS = {
 
 ---
 
-### UI-003: Remove Assessment Note Type
+### UI-003: Separate Assessment Module from Notes
 
 **Context:** PRD specified assessment notes (Self-Compassion, Values Alignment) as a note type.
 
-**Decision:** Remove assessment note type; assessments completed externally and imported.
+**Decision:** Remove assessment note type; create dedicated "About Me → Assessments" section with built-in questionnaires.
 
 **Rationale:**
 - Assessments are structured questionnaires with scoring—awkward as "notes"
-- Better UX: complete on official sites (self-compassion.org, etc.)
-- Import results to "About Me" folder for AI context
+- Better UX: dedicated wizard-style interface for each assessment type
+- Results stored in typed tables for trend tracking
 - Reduces complexity in notes screen
 
-**Alternative approach:**
-- Create "About Me" folder structure
-- Store assessment results as documents
-- AI agents read from "About Me" for personalization
+**Implementation:**
+- "About Me" section in navigation
+- Dedicated `/about-me/assessments` page
+- Per-assessment-type wizard pages
+- Structured data storage for analytics
 
 **Consequences:**
 - ✅ Simpler notes screen (3 types: Meeting, Document, Quick Capture)
-- ✅ Validated assessments from official sources
-- ⚠️ Requires manual import step for users
-- 📝 "About Me" section to be built next
+- ✅ Seamless in-app assessment experience
+- ✅ Structured data enables trend visualization
+- ✅ "About Me" section built with assessments integrated
 
 ---
 
@@ -1281,3 +1298,772 @@ CUE_STYLES = {
 ---
 
 *End of December 20-21, 2025 decisions*
+
+---
+
+## December 23, 2025
+
+### AI-008: No RAG Implementation (For Now)
+
+**Context:** RAG (Retrieval-Augmented Generation) is commonly recommended for AI applications that need to reference user data. Should Chrononaut implement vector embeddings and similarity search?
+
+**Decision:** Do not implement RAG. Use direct SQL queries and structured context injection instead.
+
+**Rationale:**
+
+1. **Structured data is more precise than vector similarity**
+   - Our data is highly structured (tasks, journal entries, health metrics)
+   - SQL queries return exact matches, not "similar" results
+   - Example: "tasks due this week" → `WHERE due_date BETWEEN...` is 100% accurate
+   - Vector search might return "similar" but irrelevant tasks
+
+2. **Scale doesn't warrant it**
+   - Personal app with ~100 notes, ~500 tasks, ~365 journal entries/year
+   - Full context fits in single API call
+   - No need to "retrieve" subset from millions of documents
+
+3. **Claude's context window is sufficient**
+   - 200k token context window handles our entire data model
+   - Pattern Analyzer can ingest 30 days of journal + health + tasks easily
+   - No chunking/retrieval complexity needed
+
+4. **Determinism matters for personal tools**
+   - SQL queries return predictable, repeatable results
+   - Vector similarity introduces non-determinism
+   - User asks "what tasks did I complete last week?" → expects exact answer
+
+5. **Simpler debugging**
+   - SQL query logs are readable
+   - No "why did RAG return this document?" mystery
+
+**When RAG would make sense:**
+- If scaling to multi-tenant with millions of notes
+- If adding external knowledge bases (company docs, research papers)
+- If semantic search ("notes about feeling anxious") becomes critical
+
+**Consequences:**
+- ✅ Simpler architecture (no vector DB, no embeddings pipeline)
+- ✅ Faster queries (SQL is optimized for our access patterns)
+- ✅ Predictable, debuggable results
+- ✅ Lower cost (no embedding API calls)
+- ⚠️ Can't do semantic similarity search
+- 📝 Revisit if note count exceeds 10,000 or external docs added
+
+---
+
+### AI-009: No LangChain Framework
+
+**Context:** LangChain, LlamaIndex, and similar frameworks provide abstractions for AI agent development. Should Chrononaut use one?
+
+**Decision:** Build custom lightweight orchestrator instead of using LangChain.
+
+**Rationale:**
+
+1. **Simpler custom code**
+   - Our orchestrator is ~80 lines of TypeScript
+   - Handles: tool execution, result accumulation, iteration limits
+   - LangChain would add 50+ dependencies for same functionality
+
+2. **Less abstraction = easier debugging**
+   - When AI fails, we see exact prompt and tool calls
+   - LangChain's abstractions obscure what's actually happening
+   - "Why did the agent do X?" → can read our code directly
+
+3. **Tailored to our data model**
+   - Tools directly query our Supabase schema
+   - No impedance mismatch between framework and data
+   - Context builders know exactly what each agent needs
+
+4. **Framework stability concerns**
+   - LangChain has frequent breaking changes
+   - API changes every few months
+   - Custom code is stable—we control the interface
+
+5. **What LangChain provides that we don't need:**
+   - Document loaders (we have SQL)
+   - Vector stores (not using RAG)
+   - Chain composition (our flows are simple)
+   - Memory abstractions (we have direct DB access)
+
+**Our implementation covers:**
+```typescript
+// Model selection by task type
+selectModel(taskType, messageCount) → { model, maxTokens, cacheable }
+
+// Context building per agent
+createContextBuilder(agentType).buildContext(userId, ...) → formattedPrompt
+
+// Multi-step orchestrator
+executeAgentWorkflow(goal, tools) → iterates until complete
+
+// Tool execution
+executeTool(name, args) → structured result
+```
+
+**Consequences:**
+- ✅ Zero external dependencies for AI orchestration
+- ✅ Full control over prompt construction
+- ✅ Easy to debug and modify
+- ✅ No version upgrade churn
+- ⚠️ Must maintain custom code
+- ⚠️ May miss LangChain ecosystem integrations
+- 📝 Can extract to internal library if building more AI apps
+
+---
+
+### AI-010: Token Efficiency Architecture
+
+**Context:** AI API costs can spiral. Need to stay within $30/month budget while providing high-quality responses.
+
+**Decision:** Implement 5-layer system: model selection, response caching, context compression, budget tracking, and task type inference.
+
+**Implementation:**
+
+1. **Model Selection by Task Type**
+   ```typescript
+   | Task Type           | Model  | Max Output |
+   |---------------------|--------|------------|
+   | mood-inference      | Haiku  | 100        |
+   | task-time-estimate  | Haiku  | 200        |
+   | quick-start         | Haiku  | 400        |
+   | simple-chat (<5msg) | Haiku  | 600        |
+   | daily-insight       | Sonnet | 1,000      |
+   | coaching-session    | Sonnet | 1,200      |
+   | weekly-review       | Sonnet | 3,000      |
+   ```
+
+2. **Response Caching**
+   - Cache key: `{userId}:{taskType}:{contextHash}`
+   - TTL: 1 hour for insights, 15 min for analysis
+   - Cache hit rate target: 30%+
+
+3. **Context Compression for Haiku**
+   - Strip verbose explanations
+   - Summarize conversation history
+   - Remove redundant context layers
+
+4. **Budget Tracking**
+   - `token_usage` table logs every request
+   - Real-time cost calculation
+   - Alerts at 70% and 90% of budget
+   - Hard stop at 100%
+
+5. **Task Type Inference**
+   - Infer from agent type + context + message count
+   - Escalate: chat upgrades Haiku→Sonnet after 4 messages
+
+**Cost projection:**
+```
+Pattern Analyzer:     ~85 req/mo × $0.007 = $0.60
+Research Assistant:   ~35 req/mo × $0.053 = $1.85
+Executive Coach:     ~170 req/mo × $0.019 = $3.30
+Therapist:           ~15 req/mo × $0.020 = $0.30
+─────────────────────────────────────────────────
+Total:                                     ~$6.05/mo
+With 30% cache hits:                       ~$4.25/mo
+```
+
+**Consequences:**
+- ✅ Estimated cost well under $30 budget
+- ✅ Haiku handles 70% of requests (fast + cheap)
+- ✅ Caching reduces redundant API calls
+- ✅ User gets budget visibility
+- ⚠️ Cache invalidation complexity
+- 📝 Monitor actual usage vs projections
+
+---
+
+### INFRA-002: Vercel Cron for Scheduled Jobs
+
+**Context:** Need to run daily morning insights and weekly reviews automatically.
+
+**Decision:** Use Vercel Cron instead of Supabase Edge Functions or external schedulers.
+
+**Implementation:**
+
+```json
+// vercel.json
+{
+  "crons": [
+    { "path": "/api/cron/morning-insight", "schedule": "0 12 * * *" },
+    { "path": "/api/cron/weekly-review", "schedule": "0 14 * * 0" }
+  ]
+}
+```
+
+**Security:**
+```typescript
+// Each cron route verifies CRON_SECRET
+export async function GET(request: NextRequest) {
+  const authHeader = request.headers.get("authorization");
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+  // ... execute job
+}
+```
+
+**Why Vercel Cron over alternatives:**
+
+| Option | Pros | Cons |
+|--------|------|------|
+| Vercel Cron | Native integration, free on Pro, simple setup | Limited to hourly minimum on free tier |
+| Supabase Edge Functions | Close to DB | More complex auth, separate deploy |
+| External (cron-job.org) | Flexible | Another service to manage, reliability? |
+| GitHub Actions | Free | Overkill for simple HTTP triggers |
+
+**Rationale:**
+- Already on Vercel Pro plan
+- Cron jobs are just HTTP endpoints—no new concepts
+- Logs visible in Vercel dashboard
+- CRON_SECRET prevents external triggering
+
+**Consequences:**
+- ✅ Zero additional services
+- ✅ Native integration with Next.js routes
+- ✅ Free with Pro plan (up to 20 crons)
+- ⚠️ Must remember to set CRON_SECRET in Vercel env
+- 📝 Times are UTC—adjust for EST when needed
+
+---
+
+### DEPS-002: AI SDK v4 Migration
+
+**Context:** Started with AI SDK v3 patterns, deployed code had v4 installed.
+
+**Decision:** Use AI SDK v4 patterns consistently.
+
+**Key changes:**
+```typescript
+// v3 (old)
+maxOutputTokens: 1024
+
+// v4 (new)
+maxTokens: 1024
+
+// v3 (old)
+return new StreamingTextResponse(stream)
+
+// v4 (new)
+return result.toTextStreamResponse()
+```
+
+**Rationale:**
+- v4 is current stable version
+- Better TypeScript types
+- Cleaner streaming API
+
+**Consequences:**
+- ✅ Using current SDK patterns
+- ✅ Better streaming response handling
+- ⚠️ Some docs still show v3 patterns
+- 📝 Update any remaining v3 code if found
+
+---
+
+*End of December 23, 2025 decisions*
+
+---
+
+## December 24-25, 2025
+
+### JOURNAL-004: Fixed Four-View Architecture
+
+**Context:** Journal needs multiple ways to view entries—daily writing, photo browsing, mood analytics, weekly summaries. How flexible should the view system be?
+
+**Decision:** Fixed four views (Entry Feed, Photo of Day, Mood Tracker, Weekly Reviews) rather than user-customizable views.
+
+**Views and purposes:**
+
+| View | Cognitive Purpose | Primary Use Case |
+|------|------------------|------------------|
+| Entry Feed | Focused writing | Daily journaling, encryption, date navigation |
+| Photo of Day | Visual memory | Browse photos by date, location context |
+| Mood Tracker | Pattern recognition | Track emotional trends over 3m/6m/1y |
+| Weekly Reviews | Reflection | AI-generated weekly summaries |
+
+**Rationale:**
+
+1. **Reduces decision fatigue** - ADHD users don't need to configure views; they exist
+2. **Each view serves distinct purpose** - No overlap, clear mental model
+3. **Simpler implementation** - No view builder/customization system needed
+4. **Can add views later** - Fixed doesn't mean frozen; can introduce new views
+
+**Alternatives considered:**
+1. Fully customizable views (Notion-style) - Too complex, analysis paralysis risk
+2. Single view with tabs - Doesn't leverage spatial mental models
+3. Two views only (write/read) - Missing analytics value
+
+**Consequences:**
+- ✅ Clear navigation pattern
+- ✅ Reduced cognitive load
+- ✅ Each view optimized for its purpose
+- ⚠️ Users can't create custom views
+- 📝 Can add "Insights" view later for AI-generated patterns
+
+---
+
+### NOTES-002: Notion-Inspired Folder Views
+
+**Context:** Notes screen needs flexible display options. Some folders benefit from spreadsheet-like control, others from visual layouts.
+
+**Decision:** Three view types (Database, Kanban, Gallery) with per-folder configuration stored in `folder_views` table.
+
+**Implementation:**
+
+```sql
+folder_views (
+  id, user_id, folder_id, name, view_type,
+  config jsonb, -- sortField, sortDirection, groupByField, filters, visibleColumns, columnWidths
+  is_default, sort_order
+)
+```
+
+**View capabilities:**
+
+| View | Strength | Best For |
+|------|----------|----------|
+| Database | Sortable columns, multi-sort, resizable, bulk actions | Power users, many notes |
+| Kanban | Visual workflow, grouping by label/type | Projects, status tracking |
+| Gallery | Visual browsing, thumbnails | Notes with images, quick scan |
+
+**Rationale:**
+- Different mental models for different content types
+- Per-folder config means "Meeting Notes" can be Database, "Inspiration" can be Gallery
+- Matches user expectations from Notion/Airtable
+
+**Key implementation details:**
+
+1. **Multi-sort** - Shift+click header to add secondary sort (stored as array)
+2. **Resizable columns** - Document-level listeners for smooth drag
+3. **Column visibility** - Toggle via header dropdown
+4. **Group by** - Kanban columns from any field with discrete values
+
+**Consequences:**
+- ✅ Flexible enough for diverse use cases
+- ✅ Configuration persists per folder
+- ✅ Power users get spreadsheet features
+- ⚠️ Kanban drag-and-drop not yet implemented (view-only)
+- 📝 Add column reordering in V2
+
+---
+
+### NOTES-003: Folder Templates System
+
+**Context:** Users create notes with repeating structures (meeting notes, 1:1s, project briefs). Templates reduce friction.
+
+**Decision:** Per-folder templates with optional AI prompt for content generation.
+
+**Schema:**
+```sql
+folder_templates (
+  id, user_id, folder_id, name,
+  default_content text,     -- Template markdown/HTML
+  default_note_type text,   -- 'meeting', 'document', 'quick_capture'
+  default_label text,
+  ai_prompt text,           -- Optional: AI generates from this
+  is_active boolean
+)
+```
+
+**Template workflow:**
+1. User clicks "New Note" in folder
+2. If templates exist, show template selector
+3. Selected template pre-fills note content
+4. If template has `ai_prompt`, offer "Generate with AI" button
+
+**Rationale:**
+- Reduces friction for repetitive note types
+- AI prompt enables smart content generation (e.g., "Generate meeting agenda for 1:1")
+- Per-folder means Meeting Notes folder has meeting templates, not others
+
+**Consequences:**
+- ✅ Faster note creation
+- ✅ Consistent structure across notes of same type
+- ✅ AI enhancement optional (not required)
+- ⚠️ Need template management UI (currently via API)
+- 📝 Add global templates (not folder-specific) in V2
+
+---
+
+### ASSESS-001: In-App Assessment Questionnaire Strategy
+
+**Context:** PRD specifies tracking assessments (Self-Compassion, Values Alignment, Strengths Profile, Executive Function). Should we build assessment forms in-app or import externally?
+
+**Decision:** Build questionnaires directly into the app with a wizard-style interface.
+
+**Rationale:**
+
+1. **Better UX** - Seamless in-app experience without context switching to external sites
+2. **Standardized scoring** - We implement validated scoring logic consistently across assessments
+3. **Progress tracking** - Can save partial progress and resume later
+4. **Trend analysis** - Structured data from the start enables tracking changes over time
+5. **Question-level data** - Storing individual responses allows deeper analysis
+
+**Implementation:**
+```
+1. User navigates to About Me → Assessments
+2. Selects assessment type (Executive Function, Self-Compassion, Strengths, Values)
+3. Wizard presents questions one at a time with Likert scales
+4. Progress bar shows completion status
+5. Review screen before final submission
+6. Scores calculated and stored in typed tables
+```
+
+**Assessment questionnaires:**
+
+| Assessment | Questions | Scale | Scoring |
+|------------|-----------|-------|---------|
+| Executive Function | 36 questions (12 skills × 3) | 1-7 Likert | Mean per skill |
+| Self-Compassion | 26 questions (6 subscales) | 1-5 Likert | Mean per subscale (some reverse-scored) |
+| Strengths Profile | 60 strengths | Performance/Energy/Frequency 1-5 | Quadrant placement |
+| Values Alignment | 3 core values selection | Supporting/slippery behaviors | AI-computed alignment score |
+
+**Consequences:**
+- ✅ Seamless in-app experience
+- ✅ Structured data for trend tracking
+- ✅ Question-level storage enables detailed analysis
+- ✅ Consistent scoring logic
+- ⚠️ Questions sourced from validated frameworks (Dawson, Neff)
+- 📝 Add assessment scheduling/reminders in V2
+
+---
+
+### ASSESS-002: Values Alignment Score Computation
+
+**Context:** How do we compute a "Living Aligned" score from abstract values data + behavioral signals?
+
+**Decision:** AI-powered score computation using 30-day rolling window of journal + insight data.
+
+**Algorithm:**
+```typescript
+computeLivingAlignedScore(userId):
+  1. Load values assessment (core values, supporting/slippery behaviors)
+  2. Fetch 30 days of journal entries (mood, energy)
+  3. Fetch 30 days of AI insights (patterns detected)
+  4. Build context document with:
+     - Each value + its behavioral signals
+     - Early warning signs of misalignment
+     - Mood/energy distribution
+     - Detected patterns
+  5. Prompt Claude Haiku to score 0-100 with:
+     - Overall score
+     - Trend (up/down/stable)
+     - Highlights (positive alignment moments)
+     - Concerns (gentle misalignment observations)
+     - Per-value scores
+  6. Cache result for 24 hours
+```
+
+**Score interpretation:**
+| Range | Meaning |
+|-------|---------|
+| 80-100 | Strongly aligned, living into values consistently |
+| 60-79 | Generally aligned with some drift |
+| 40-59 | Mixed signals, some misalignment patterns |
+| 0-39 | Significant misalignment detected |
+
+**Rationale:**
+- AI can synthesize abstract values + concrete behaviors
+- Journal mood/energy provides behavioral signals
+- 30-day window captures patterns, not one-off events
+- Caching reduces API costs (daily refresh sufficient)
+
+**Consequences:**
+- ✅ Meaningful score from abstract values
+- ✅ Trend tracking over time
+- ✅ Actionable highlights/concerns
+- ⚠️ Requires consistent journaling for accuracy
+- ⚠️ AI inference, not precise measurement
+- 📝 Add "Why?" button to explain score in V2
+
+---
+
+### ASSESS-003: Executive Function Quarterly Tracking
+
+**Context:** Executive function skills change slowly. How often should users retake the assessment?
+
+**Decision:** Quarterly tracking with reminder system and historical score storage.
+
+**Implementation:**
+
+```sql
+-- Historical scores
+executive_function_scores (
+  id, user_id, assessment_date,
+  total_score,  -- 0-210
+  goal_directed_persistence, organization, task_initiation,
+  metacognition, planning_prioritization, stress_tolerance,
+  flexibility, sustained_attention, working_memory, emotional_control
+)
+
+-- Reminders
+assessment_reminders (
+  id, user_id, assessment_type,
+  last_taken_date, next_reminder_date,
+  reminder_frequency_days,  -- default 90
+  dismissed_until
+)
+```
+
+**12 Executive Function Skills (Dawson Framework):**
+1. Response Inhibition
+2. Working Memory
+3. Emotional Control
+4. Task Initiation
+5. Sustained Attention
+6. Planning & Prioritization
+7. Organization
+8. Time Management
+9. Flexibility
+10. Metacognition
+11. Goal-Directed Persistence
+12. Stress Tolerance
+
+**Rationale:**
+- EF skills are stable traits (don't change weekly)
+- Quarterly retake catches gradual improvement/decline
+- Individual skill tracking enables targeted interventions
+- Reminders ensure consistent tracking
+
+**Dashboard card display:**
+- Spider/radar chart of 12 skills
+- Trend arrows vs previous quarter
+- "Retake Assessment" button when due
+
+**Consequences:**
+- ✅ Long-term tracking of EF development
+- ✅ Per-skill analysis enables focus
+- ✅ Reminders prevent tracking drift
+- ✅ In-app 36-question wizard (12 skills × 3 questions)
+- 📝 Add trend visualization comparing quarters in V2
+
+---
+
+### TRANSCRIBE-001: Deepgram Over Whisper for Real-Time Transcription
+
+**Context:** Meeting transcription needs real-time display. Which speech-to-text provider to use?
+
+**Decision:** Deepgram WebSocket API for real-time transcription with speaker diarization.
+
+**Comparison:**
+
+| Feature | Deepgram | Whisper (OpenAI) |
+|---------|----------|------------------|
+| Latency | <300ms streaming | Batch only (post-recording) |
+| Diarization | Built-in | Requires separate model |
+| API Style | WebSocket (streaming) | REST (upload file) |
+| Price | $0.0059/min | $0.006/min |
+| On-device | No | Yes (whisper.cpp) |
+
+**Why Deepgram:**
+1. **Real-time streaming** - User sees transcript as they speak
+2. **Built-in diarization** - Identifies speakers without extra model
+3. **WebSocket API** - Natural fit for live transcription
+4. **Similar price** - Negligible cost difference
+
+**Why not Whisper:**
+- Batch processing doesn't support live display
+- Would need to record → upload → transcribe → display
+- Diarization requires separate pipeline (pyannote, etc.)
+
+**Implementation details:**
+```typescript
+// Deepgram WebSocket parameters
+{
+  encoding: 'linear16',
+  sample_rate: 16000,
+  channels: 1,
+  diarize: true,
+  punctuate: true,
+  interim_results: true
+}
+```
+
+**Consequences:**
+- ✅ Real-time transcript display
+- ✅ Speaker identification works out of box
+- ✅ Low latency (<300ms)
+- ⚠️ Requires internet connection (no offline)
+- ⚠️ WebSocket management (reconnection, keepalive)
+- 📝 Add offline fallback with local Whisper in V2
+
+---
+
+### TRANSCRIBE-002: Dual Audio Capture Architecture
+
+**Context:** Meeting transcription needs both microphone (user voice) AND system audio (remote participants on Zoom/Meet).
+
+**Decision:** Use Web Audio API with BlackHole virtual audio driver for dual-stream capture.
+
+**Architecture:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    User's Mac                                │
+│                                                              │
+│  ┌──────────────┐     ┌───────────────────┐                 │
+│  │ Microphone   │────▶│   Web Audio API   │────▶ Stream 1   │
+│  └──────────────┘     │                   │                 │
+│                       │   DualCapture     │                 │
+│  ┌──────────────┐     │                   │                 │
+│  │ System Audio │────▶│   (via BlackHole) │────▶ Stream 2   │
+│  └──────────────┘     └───────────────────┘                 │
+│         ▲                                                    │
+│         │                                                    │
+│  ┌──────────────┐                                           │
+│  │  BlackHole   │ ◀─── Audio MIDI Setup                     │
+│  │  (virtual    │      Multi-Output Device                  │
+│  │   driver)    │      [BlackHole + Speakers]               │
+│  └──────────────┘                                           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Why BlackHole:**
+- Free, open-source virtual audio driver for macOS
+- Routes system audio to a virtual input device
+- Browser can capture "BlackHole" as microphone input
+- User still hears audio via Multi-Output Device
+
+**Setup required:**
+1. Install BlackHole driver
+2. Create Multi-Output Device in Audio MIDI Setup
+3. Add BlackHole + Built-in Output to Multi-Output
+4. Select BlackHole as input device in transcription widget
+
+**Consequences:**
+- ✅ Captures both local and remote speakers
+- ✅ Works with any meeting app (Zoom, Meet, Teams)
+- ✅ No app-specific integrations needed
+- ⚠️ Requires one-time macOS setup
+- ⚠️ Only works on macOS (Windows/Linux need different approach)
+- 📝 Add setup wizard with step-by-step instructions
+
+---
+
+### TRANSCRIBE-003: Speaker Diarization UX
+
+**Context:** Deepgram returns speaker IDs (0, 1, 2...) but users want meaningful names.
+
+**Decision:** Editable speaker labels with persistence, aggregated into paragraph-level turns.
+
+**Transcript structure:**
+```typescript
+interface TranscriptParagraph {
+  id: string;
+  speaker: number;          // Deepgram speaker ID
+  speakerLabel: string;     // User-editable: "Me", "Alice", "Bob"
+  text: string;             // Accumulated sentences
+  startTime: number;
+  endTime: number;
+}
+```
+
+**Speaker label workflow:**
+1. Default labels: "Speaker 1", "Speaker 2", etc.
+2. User clicks label → inline edit
+3. All occurrences of that speaker update
+4. Labels saved with transcript
+
+**Aggregation logic:**
+- Deepgram returns word-level speaker IDs
+- We aggregate consecutive words from same speaker into paragraphs
+- New paragraph starts when speaker changes
+- Results in natural conversational blocks
+
+**Consequences:**
+- ✅ Clean, readable transcript format
+- ✅ User can identify speakers meaningfully
+- ✅ Persistent across page reloads
+- ⚠️ Diarization accuracy varies (70-90% depending on audio quality)
+- 📝 Add "Auto-identify" with voice profiles in V2
+
+---
+
+### UI-005: View State in URL
+
+**Context:** Multi-view screens (Journal, Notes) need to preserve view selection across navigation.
+
+**Decision:** Store view state in URL query parameters using `useSearchParams`.
+
+**Implementation:**
+```typescript
+// Journal
+/journal                      → Entry Feed (default)
+/journal?view=mood-tracker    → Mood Tracker
+/journal?view=photo-of-day    → Photo of Day
+/journal?date=2025-12-24      → Specific date
+
+// Notes
+/notes?folder=abc123          → Specific folder
+/notes?view=kanban&folder=x   → Kanban view of folder
+```
+
+**Rationale:**
+- **Shareable links** - User can bookmark specific views
+- **Back button works** - Browser history preserves view state
+- **SSR-friendly** - Server can render correct view on initial load
+- **No localStorage pollution** - State lives in URL
+
+**Pattern:**
+```typescript
+const searchParams = useSearchParams();
+const router = useRouter();
+
+const handleViewChange = (view: ViewType) => {
+  const params = new URLSearchParams(searchParams.toString());
+  if (view === defaultView) {
+    params.delete('view');
+  } else {
+    params.set('view', view);
+  }
+  router.push(`/journal?${params.toString()}`);
+};
+```
+
+**Consequences:**
+- ✅ Bookmarkable views
+- ✅ Browser history works correctly
+- ✅ Shareable (user can send link to specific view)
+- ⚠️ URL gets longer with more params
+- 📝 Consider URL shortening for complex state in V2
+
+---
+
+### SCHEMA-005: Realignment Actions Table
+
+**Context:** When user detects values misalignment, they should be able to capture specific actions to realign.
+
+**Decision:** Create `realignment_actions` table to track corrective actions.
+
+**Schema:**
+```sql
+realignment_actions (
+  id uuid primary key,
+  user_id uuid references profiles,
+  value_name text not null,           -- Which value this addresses
+  action_description text not null,   -- What user commits to do
+  source text,                        -- 'ai_suggestion', 'user_created'
+  status text default 'pending',      -- 'pending', 'in_progress', 'completed', 'skipped'
+  due_date date,
+  completed_at timestamptz,
+  created_at timestamptz,
+  updated_at timestamptz
+)
+```
+
+**Integration with Values Alignment Score:**
+- When AI computes concerns, suggest actions
+- User can accept/modify/dismiss suggestions
+- Track action completion for accountability
+- Factor completion into next score computation
+
+**Consequences:**
+- ✅ Actionable output from alignment analysis
+- ✅ Accountability through tracking
+- ✅ AI suggestions reduce cognitive load
+- ⚠️ Another table to maintain
+- 📝 Add recurring action support in V2
+
+---
+
+*End of December 24-25, 2025 decisions*

@@ -36,19 +36,22 @@ export async function pullEventsFromGoogle(
   };
 
   try {
-    // Fetch events from Google (next 30 days by default)
+    // Fetch events from ALL calendars (next 30 days by default)
     const now = new Date();
     const thirtyDaysAgo = new Date(now);
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 7); // Include recent past events
-    
+
     const thirtyDaysFromNow = new Date(now);
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
-    const googleEvents = await client.getEvents({
+    // Use getAllCalendarEvents to fetch from all calendars, not just primary
+    const googleEvents = await client.getAllCalendarEvents({
       timeMin: thirtyDaysAgo,
       timeMax: thirtyDaysFromNow,
       maxResults: 250,
     });
+
+    console.log(`\n=== SYNC PROCESSING ${googleEvents.length} EVENTS ===`);
 
     // Get existing local events
     const { data: localEvents, error: fetchError } = await supabase

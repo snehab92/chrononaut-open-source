@@ -628,7 +628,7 @@ Keep it concise and actionable - I have ADHD and need clear, direct guidance.`
               isFocusing ? modeConfig.bgColor : ""
             )}>
               <Select value={mode} onValueChange={(v: FocusMode) => setMode(v)}>
-                <SelectTrigger className="w-32 bg-white border-[#E8DCC4] h-8 text-sm">
+                <SelectTrigger className="w-32 bg-white border-[#E8DCC4] h-9 text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -642,11 +642,11 @@ Keep it concise and actionable - I have ADHD and need clear, direct guidance.`
                   ))}
                 </SelectContent>
               </Select>
-              
+
               {/* Session Timer - right next to mode when focusing */}
               {isFocusing && (
                 <>
-                  <div className="flex items-center gap-1.5 px-3 h-8 bg-white rounded border border-[#E8DCC4]">
+                  <div className="flex items-center gap-1.5 px-3 h-9 bg-white rounded-md border border-[#E8DCC4]">
                     <Timer className="w-3.5 h-3.5 text-[#5C7A6B]" />
                     <span className="font-mono text-sm font-medium text-[#1E3D32]">{formatTime(focusTime)}</span>
                   </div>
@@ -661,7 +661,7 @@ Keep it concise and actionable - I have ADHD and need clear, direct guidance.`
 
                   {/* Task Timer - immediately right of session timer */}
                   {activeTimerTask && (
-                    <div className="flex items-center gap-1.5 px-3 h-8 bg-white rounded border border-[#E8DCC4] ml-2">
+                    <div className="flex items-center gap-1.5 px-3 h-9 bg-white rounded-md border border-[#E8DCC4] ml-2">
                       <span className={cn("w-2 h-2 rounded-full flex-shrink-0", getPriorityColor(activeTimerTask.priority))} />
                       <span className="text-sm text-[#1E3D32] max-w-48 truncate">
                         {activeTimerTask.title}

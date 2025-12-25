@@ -84,12 +84,24 @@ export async function POST(req: Request) {
 
   // Build context using agent-specific builder
   const contextBuilder = createContextBuilder(effectiveAgentType);
-  const builtContext = await contextBuilder.buildContext(
-    user.id,
-    conversationId,
-    messages,
-    typeof context === "string" ? context : context?.data
-  );
+  console.log("[DEBUG] Building context for:", effectiveAgentType, "messages:", messages?.length);
+
+  let builtContext;
+  try {
+    builtContext = await contextBuilder.buildContext(
+      user.id,
+      conversationId,
+      messages,
+      typeof context === "string" ? context : context?.data
+    );
+    console.log("[DEBUG] Context built. Messages:", builtContext.conversationalMessages?.length, "Prompt length:", builtContext.formattedPrompt?.length);
+  } catch (contextError) {
+    console.error("[DEBUG] Context build failed:", contextError);
+    return new Response(JSON.stringify({ error: "Context build failed" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
   // Get optimized prompt (compressed for Haiku)
   const systemPrompt = getOptimizedPrompt(
@@ -100,12 +112,14 @@ export async function POST(req: Request) {
 
   // Stream the response
   try {
+    console.log("[DEBUG] Calling AI with model:", modelConfig.model, "system length:", systemPrompt?.length);
     const result = await streamText({
       model: anthropic(modelConfig.model),
       system: systemPrompt,
       messages: builtContext.conversationalMessages,
       maxTokens: modelConfig.maxOutputTokens,
     });
+    console.log("[DEBUG] AI call successful, streaming response");
 
     // Estimate input tokens for tracking
     const inputTokens = builtContext.estimatedInputTokens;

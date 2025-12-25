@@ -24,19 +24,11 @@ export function KeyboardShortcuts() {
           e.preventDefault();
           router.push("/focus");
           break;
-        case "m":
-          e.preventDefault();
-          router.push("/meeting");
-          break;
         case "j":
           e.preventDefault();
           router.push("/journal");
           break;
-        case "t":
-          e.preventDefault();
-          // TODO: Open quick task modal
-          console.log("Quick task shortcut - modal coming soon");
-          break;
+        // Note: ⌘T (Quick Task) is handled by QuickTaskProvider
       }
     };
 

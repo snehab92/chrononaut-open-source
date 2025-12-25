@@ -311,10 +311,71 @@ export class TickTickClient {
     return result;
   }
 
+  /**
+   * Create a new task
+   * ALLOWED: Yes - this is needed for quick task creation
+   *
+   * Uses batch/task endpoint with add array
+   *
+   * @param task - The task data
+   * @returns The created task ID
+   */
+  async createTask(task: {
+    title: string;
+    content?: string;
+    projectId?: string; // Defaults to inbox
+    dueDate?: string | null;
+    priority?: number; // 0=none, 1=low, 3=medium, 5=high
+    isAllDay?: boolean;
+  }): Promise<{ id: string; projectId: string }> {
+    // Generate a unique ID for the new task
+    const taskId = this.generateTaskId();
+    const projectId = task.projectId || this.inboxId;
+
+    const newTask = {
+      id: taskId,
+      projectId: projectId,
+      title: task.title,
+      content: task.content || '',
+      priority: task.priority || 0,
+      status: 0, // 0 = active
+      dueDate: task.dueDate || null,
+      isAllDay: task.isAllDay ?? true,
+      sortOrder: -Date.now(), // Negative timestamp for newest first
+      modifiedTime: new Date().toISOString().replace('Z', '+0000'),
+      createdTime: new Date().toISOString().replace('Z', '+0000'),
+    };
+
+    const payload = {
+      add: [newTask],
+      addAttachments: [],
+      delete: [],
+      deleteAttachments: [],
+      updateAttachments: [],
+      update: []
+    };
+
+    await this.request('POST', '/batch/task', payload);
+
+    return { id: taskId, projectId };
+  }
+
+  /**
+   * Generate a unique task ID in TickTick format
+   * Format: 24-character hex string
+   */
+  private generateTaskId(): string {
+    const characters = '0123456789abcdef';
+    let id = '';
+    for (let i = 0; i < 24; i++) {
+      id += characters[Math.floor(Math.random() * characters.length)];
+    }
+    return id;
+  }
+
   // ==================== BLOCKED OPERATIONS ====================
   // These methods are intentionally NOT implemented to prevent accidental data modification
-  
-  // createTask - NOT IMPLEMENTED (nice-to-have, may add later with explicit flag)
+
   // deleteTask - NOT IMPLEMENTED
   // updateTaskTitle - NOT IMPLEMENTED
   // updateTaskContent - NOT IMPLEMENTED

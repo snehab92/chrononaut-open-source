@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   Calendar, Video, MapPin, ChevronDown, ChevronUp,
-  ExternalLink, FileText, ArrowRight, ChevronLeft, ChevronRight as ChevronRightIcon
+  ExternalLink, FileText, ArrowRight, ChevronLeft, ChevronRight as ChevronRightIcon, Users
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -370,12 +370,18 @@ ${attendeesList ? `**Attendees:** ${attendeesList}` : ""}
               >
                 <div className="flex items-center gap-2 text-xs text-[#8B9A8F]">
                   <span>
-                    {event.allDay 
-                      ? "All day" 
+                    {event.allDay
+                      ? "All day"
                       : formatTime(new Date(event.startTime))
                     }
                   </span>
                   {event.meetingLink && <Video className="h-3 w-3 text-[#5C7A6B]" />}
+                  {event.attendees && event.attendees.length > 0 && (
+                    <span className="flex items-center gap-0.5 text-[#5C7A6B]">
+                      <Users className="h-3 w-3" />
+                      {event.attendees.length}
+                    </span>
+                  )}
                   {event.linkedNoteId && (
                     <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[10px]">
                       <FileText className="h-2.5 w-2.5" />
@@ -425,6 +431,34 @@ ${attendeesList ? `**Attendees:** ${attendeesList}` : ""}
                 <div className="flex items-center gap-2 text-sm text-[#5C7A6B]">
                   <MapPin className="w-4 h-4" />
                   <span>{selectedEvent.location}</span>
+                </div>
+              )}
+
+              {/* Attendees */}
+              {selectedEvent.attendees && selectedEvent.attendees.length > 0 && (
+                <div className="flex items-start gap-2 text-sm">
+                  <Users className="w-4 h-4 text-[#8B9A8F] mt-0.5" />
+                  <div className="flex-1">
+                    <div className="text-[#5C7A6B] mb-1">
+                      {selectedEvent.attendees.length} attendee{selectedEvent.attendees.length !== 1 ? 's' : ''}
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {selectedEvent.attendees.slice(0, 5).map((attendee, i) => (
+                        <span
+                          key={i}
+                          className="px-2 py-0.5 text-xs bg-[#F5F0E6] text-[#5C7A6B] rounded-full"
+                          title={attendee.email}
+                        >
+                          {attendee.name || attendee.email.split('@')[0]}
+                        </span>
+                      ))}
+                      {selectedEvent.attendees.length > 5 && (
+                        <span className="px-2 py-0.5 text-xs bg-[#F5F0E6] text-[#8B9A8F] rounded-full">
+                          +{selectedEvent.attendees.length - 5} more
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
 

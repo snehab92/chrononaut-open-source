@@ -1,8 +1,10 @@
 "use client";
 
 import { useCalendarContext, CalendarEvent } from "./calendar-context";
-import { useState } from "react";
-import { MapPin, Video, ExternalLink, Users, Clock, X, FileText } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import { MapPin, Video, ExternalLink, Users, Clock, FileText } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -16,9 +18,54 @@ interface EventListProps {
 }
 
 export function EventList({ isConnected }: EventListProps) {
-  const { events } = useCalendarContext();
+  const { events, updateEvent } = useCalendarContext();
   const [view, setView] = useState<"today" | "week">("today");
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const supabase = createClient();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Handle URL query param to auto-open event modal
+  useEffect(() => {
+    const eventId = searchParams.get("event");
+    if (eventId && events.length > 0) {
+      const matchingEvent = events.find(e => e.googleEventId === eventId);
+      if (matchingEvent) {
+        setSelectedEvent(matchingEvent);
+        // Clear the query param from URL after opening
+        router.replace("/dashboard", { scroll: false });
+      }
+    }
+  }, [searchParams, events, router]);
+
+  // Fetch linked notes for events on mount
+  useEffect(() => {
+    if (!isConnected || events.length === 0) return;
+
+    const fetchLinkedNotes = async () => {
+      const googleEventIds = events.map(e => e.googleEventId);
+      const { data: linkedNotes } = await supabase
+        .from("notes")
+        .select("id, calendar_event_id")
+        .in("calendar_event_id", googleEventIds);
+
+      if (linkedNotes) {
+        linkedNotes.forEach((note: { id: string; calendar_event_id: string }) => {
+          updateEvent(note.calendar_event_id, { linkedNoteId: note.id });
+        });
+      }
+    };
+
+    fetchLinkedNotes();
+  }, [isConnected, events.length, supabase, updateEvent]);
+
+  const handleNoteCreated = (googleEventId: string, noteId: string) => {
+    updateEvent(googleEventId, { linkedNoteId: noteId });
+    // Update selected event if it's the one we just created a note for
+    if (selectedEvent?.googleEventId === googleEventId) {
+      setSelectedEvent(prev => prev ? { ...prev, linkedNoteId: noteId } : null);
+    }
+  };
 
   if (!isConnected) {
     return (
@@ -62,46 +109,155 @@ export function EventList({ isConnected }: EventListProps) {
       )}
 
       {/* Event detail modal */}
-      <EventDetailModal 
-        event={selectedEvent} 
-        onClose={() => setSelectedEvent(null)} 
+      <EventDetailModal
+        event={selectedEvent}
+        onClose={() => setSelectedEvent(null)}
+        onNoteCreated={handleNoteCreated}
       />
     </div>
   );
 }
 
 // Event detail modal
-function EventDetailModal({ 
-  event, 
-  onClose 
-}: { 
-  event: CalendarEvent | null; 
+function EventDetailModal({
+  event: eventProp,
+  onClose,
+  onNoteCreated,
+}: {
+  event: CalendarEvent | null;
   onClose: () => void;
+  onNoteCreated: (googleEventId: string, noteId: string) => void;
 }) {
-  if (!event) return null;
+  const router = useRouter();
+  const supabase = createClient();
+  const [isCreatingNote, setIsCreatingNote] = useState(false);
+  const [linkedNoteId, setLinkedNoteId] = useState<string | null>(null);
+  const [isCheckingNote, setIsCheckingNote] = useState(false);
+  const { events, updateEvent } = useCalendarContext();
+
+  // Fetch linked note when modal opens
+  useEffect(() => {
+    if (!eventProp?.googleEventId) {
+      setLinkedNoteId(null);
+      return;
+    }
+
+    const checkLinkedNote = async () => {
+      setIsCheckingNote(true);
+      const { data: note } = await supabase
+        .from("notes")
+        .select("id")
+        .eq("calendar_event_id", eventProp.googleEventId)
+        .single();
+
+      if (note) {
+        setLinkedNoteId(note.id);
+        // Also update the context so other views reflect this
+        updateEvent(eventProp.googleEventId, { linkedNoteId: note.id });
+      } else {
+        setLinkedNoteId(null);
+      }
+      setIsCheckingNote(false);
+    };
+
+    checkLinkedNote();
+  }, [eventProp?.googleEventId, supabase, updateEvent]);
+
+  if (!eventProp) return null;
+
+  // Get the latest event data from context
+  const event = events.find(e => e.googleEventId === eventProp.googleEventId) || eventProp;
+
+  // Use the locally fetched linkedNoteId, falling back to context
+  const effectiveLinkedNoteId = linkedNoteId || event.linkedNoteId;
 
   const startTime = new Date(event.startTime);
   const endTime = new Date(event.endTime);
-  
+
   const dateString = startTime.toLocaleDateString(undefined, {
     weekday: "long",
     month: "long",
     day: "numeric",
   });
-  
-  const timeString = event.allDay 
+
+  const timeString = event.allDay
     ? "All day"
     : `${formatTime(startTime)} – ${formatTime(endTime)}`;
 
-  const duration = event.allDay 
-    ? null 
+  const duration = event.allDay
+    ? null
     : Math.round((endTime.getTime() - startTime.getTime()) / (1000 * 60));
 
-  const durationString = duration 
-    ? duration >= 60 
+  const durationString = duration
+    ? duration >= 60
       ? `${Math.floor(duration / 60)}h ${duration % 60 > 0 ? `${duration % 60}m` : ''}`
       : `${duration}m`
     : null;
+
+  const handleMeetingNote = async () => {
+    // If note already exists, navigate to it
+    if (effectiveLinkedNoteId) {
+      router.push(`/notes?id=${effectiveLinkedNoteId}`);
+      onClose();
+      return;
+    }
+
+    // Otherwise create new note
+    setIsCreatingNote(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setIsCreatingNote(false);
+      return;
+    }
+
+    // Create new meeting note
+    const attendeesList = event.attendees?.map(a => a.name || a.email).join(", ") || "";
+    const template = `## Meeting: ${event.title}
+
+**Date:** ${new Date(event.startTime).toLocaleDateString()}
+**Time:** ${formatTime(new Date(event.startTime))} - ${formatTime(new Date(event.endTime))}
+${event.location ? `**Location:** ${event.location}` : ""}
+${attendeesList ? `**Attendees:** ${attendeesList}` : ""}
+
+---
+
+### Pre-Meeting Notes
+
+
+### Discussion Points
+
+
+### Action Items
+
+- [ ]
+
+### Follow-up
+
+`;
+
+    const { data: newNote, error } = await supabase
+      .from("notes")
+      .insert({
+        user_id: user.id,
+        title: `Meeting: ${event.title}`,
+        content: template,
+        note_type: "meeting",
+        calendar_event_id: event.googleEventId,
+      })
+      .select()
+      .single();
+
+    if (!error && newNote) {
+      // Update local state to show note is now linked
+      setLinkedNoteId(newNote.id);
+      onNoteCreated(event.googleEventId, newNote.id);
+      // Navigate to the notes page with the new note
+      router.push(`/notes?id=${newNote.id}`);
+    }
+
+    onClose();
+    setIsCreatingNote(false);
+  };
 
   return (
     <Dialog open={!!event} onOpenChange={(open) => !open && onClose()}>
@@ -143,7 +299,7 @@ function EventDetailModal({
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {event.attendees.slice(0, 5).map((attendee, i) => (
-                    <span 
+                    <span
                       key={i}
                       className="px-2 py-0.5 text-xs bg-[#F5F0E6] text-[#5C7A6B] rounded-full"
                       title={attendee.email}
@@ -188,15 +344,22 @@ function EventDetailModal({
                 </a>
               </Button>
             )}
-            
+
             <Button
               variant="outline"
+              onClick={handleMeetingNote}
+              disabled={isCreatingNote || isCheckingNote}
               className="w-full border-[#E8DCC4] text-[#5C7A6B] hover:bg-[#F5F0E6] hover:text-[#1E3D32]"
-              disabled
-              title="Coming soon - Notes screen"
             >
               <FileText className="h-4 w-4 mr-2" />
-              Start Meeting Notes
+              {isCreatingNote
+                ? "Creating..."
+                : isCheckingNote
+                  ? "Checking..."
+                  : effectiveLinkedNoteId
+                    ? "Open Meeting Note"
+                    : "Start Meeting Note"
+              }
             </Button>
           </div>
         </div>
@@ -372,9 +535,16 @@ function MiniEventCard({
       <div className="text-[11px] text-[#1E3D32] font-medium line-clamp-2 leading-tight">
         {event.title}
       </div>
-      {event.meetingLink && (
-        <div className="flex items-center gap-0.5 mt-0.5 text-[9px] text-[#5C7A6B]">
-          <Video className="h-2.5 w-2.5" />
+      {/* Meta indicators row */}
+      {(event.meetingLink || (event.attendees && event.attendees.length > 0)) && (
+        <div className="flex items-center gap-1.5 mt-0.5 text-[9px] text-[#5C7A6B]">
+          {event.meetingLink && <Video className="h-2.5 w-2.5" />}
+          {event.attendees && event.attendees.length > 0 && (
+            <span className="flex items-center gap-0.5">
+              <Users className="h-2.5 w-2.5" />
+              {event.attendees.length}
+            </span>
+          )}
         </div>
       )}
     </div>
@@ -412,13 +582,21 @@ function EventCard({
         {event.title}
       </h3>
       
-      {/* Meta info */}
-      {event.location && (
-        <div className="flex items-center gap-1 mt-1 text-xs text-[#8B9A8F]">
-          <MapPin className="h-3 w-3" />
-          <span className="truncate">{event.location}</span>
-        </div>
-      )}
+      {/* Meta info row */}
+      <div className="flex items-center gap-3 mt-1.5">
+        {event.location && (
+          <div className="flex items-center gap-1 text-xs text-[#8B9A8F]">
+            <MapPin className="h-3 w-3" />
+            <span className="truncate max-w-[100px]">{event.location}</span>
+          </div>
+        )}
+        {event.attendees && event.attendees.length > 0 && (
+          <div className="flex items-center gap-1 text-xs text-[#8B9A8F]">
+            <Users className="h-3 w-3" />
+            <span>{event.attendees.length}</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,31 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-
-// Mood enum from PRD
-const MOOD_LABELS = [
-  'Threatened', 'Stressed', 'Unfocused', 'Rejected',
-  'Creative', 'Adventurous', 'Angry', 'Manic',
-  'Calm', 'Content', 'Socially Connected', 'Romantic'
-] as const;
-
-type MoodLabel = typeof MOOD_LABELS[number];
-
-// Mood to emoji + color mapping
-const MOOD_CONFIG: Record<MoodLabel, { emoji: string; color: string; bgColor: string }> = {
-  'Threatened': { emoji: '😰', color: 'text-red-600', bgColor: 'bg-red-100' },
-  'Stressed': { emoji: '😣', color: 'text-orange-600', bgColor: 'bg-orange-100' },
-  'Unfocused': { emoji: '😶‍🌫️', color: 'text-gray-600', bgColor: 'bg-gray-100' },
-  'Rejected': { emoji: '😢', color: 'text-blue-600', bgColor: 'bg-blue-100' },
-  'Creative': { emoji: '✨', color: 'text-purple-600', bgColor: 'bg-purple-100' },
-  'Adventurous': { emoji: '🤩', color: 'text-amber-600', bgColor: 'bg-amber-100' },
-  'Angry': { emoji: '😠', color: 'text-red-700', bgColor: 'bg-red-100' },
-  'Manic': { emoji: '🤪', color: 'text-pink-600', bgColor: 'bg-pink-100' },
-  'Calm': { emoji: '😌', color: 'text-teal-600', bgColor: 'bg-teal-100' },
-  'Content': { emoji: '😊', color: 'text-green-600', bgColor: 'bg-green-100' },
-  'Socially Connected': { emoji: '🥰', color: 'text-rose-600', bgColor: 'bg-rose-100' },
-  'Romantic': { emoji: '💕', color: 'text-pink-500', bgColor: 'bg-pink-100' },
-};
+import { MOOD_CONFIG, type MoodLabel } from "@/lib/journal/types";
 
 interface MoodSectionProps {
   journalEntries: {

@@ -3,9 +3,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { createClient } from "@/lib/supabase/client";
-import { 
+import {
   Search, FileText, Plus, Folder, X, ChevronDown, ChevronUp,
-  Star, Tag, FolderOpen, Pencil
+  Star, Tag, FolderOpen, Pencil, Trash2
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { MeetingEventBadge } from "@/components/notes/meeting-event-badge";
 
 const RichEditor = dynamic(() => import("@/components/rich-editor").then(mod => mod.RichEditor), {
   ssr: false,
@@ -48,6 +49,7 @@ interface Note {
   is_starred?: boolean;
   created_at: string;
   updated_at: string;
+  calendar_event_id?: string | null;
 }
 
 interface FolderType {
@@ -94,6 +96,15 @@ function getLabelColor(label: string) {
   return LABEL_COLORS[Math.abs(hash) % LABEL_COLORS.length];
 }
 
+// Tab state for each open note
+interface TabNote {
+  note: Note;
+  localTitle: string;
+  localContent: string;
+  hasUnsavedChanges: boolean;
+  editorKey: number;
+}
+
 interface FocusNoteEditorProps {
   initialNoteId?: string;
   onNoteCreated?: (noteId: string) => void;
@@ -106,31 +117,37 @@ export function FocusNoteEditor({ initialNoteId, onNoteCreated }: FocusNoteEdito
   const [searchResults, setSearchResults] = useState<Note[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isSearchCollapsed, setIsSearchCollapsed] = useState(false);
-  
-  const [selectedNote, setSelectedNote] = useState<Note | null>(null);
-  const [localTitle, setLocalTitle] = useState("");
-  const [localContent, setLocalContent] = useState("");
+
+  // Multi-tab state
+  const [openTabs, setOpenTabs] = useState<TabNote[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
+
+  // Get active tab
+  const activeTab = openTabs.find(t => t.note.id === activeTabId);
+  const selectedNote = activeTab?.note || null;
+  const localTitle = activeTab?.localTitle || "";
+  const localContent = activeTab?.localContent || "";
+  const hasUnsavedChanges = activeTab?.hasUnsavedChanges || false;
+
   const [isSaving, setIsSaving] = useState(false);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [editorKey, setEditorKey] = useState(0);
-  
+
   const [folders, setFolders] = useState<FolderType[]>([]);
   const [allLabels, setAllLabels] = useState<string[]>([]);
-  
+
   // Empty note handling
   const [showSaveDeleteDialog, setShowSaveDeleteDialog] = useState(false);
   const [pendingAction, setPendingAction] = useState<"switch" | "close" | null>(null);
   const [pendingNote, setPendingNote] = useState<Note | null>(null);
-  
+
   // Edit state
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [labelInput, setLabelInput] = useState("");
   const [showLabelPopover, setShowLabelPopover] = useState(false);
-  
+
   const dropdownRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
-  
+
   const supabase = createClient();
 
   // Fetch folders and all labels on mount
@@ -173,40 +190,6 @@ export function FocusNoteEditor({ initialNoteId, onNoteCreated }: FocusNoteEdito
       loadNote(initialNoteId);
     }
   }, [initialNoteId]);
-
-  // Auto-delete empty notes on unmount (navigation away from Focus screen)
-  // This ensures blank notes don't clutter the notebook
-  useEffect(() => {
-    const noteRef = { id: selectedNote?.id, title: localTitle, content: localContent };
-
-    return () => {
-      const noteId = noteRef.id;
-      if (noteId) {
-        const strippedContent = noteRef.content.replace(/<[^>]*>/g, '').trim();
-        const isDefaultTitle = noteRef.title === "Focus Note" || noteRef.title === "Untitled" || !noteRef.title.trim();
-        const isEmpty = isDefaultTitle && !strippedContent;
-
-        if (isEmpty) {
-          // Delete empty note asynchronously on unmount
-          supabase.from("notes").delete().eq("id", noteId);
-        }
-      }
-    };
-  }, [selectedNote?.id, localTitle, localContent, supabase]);
-
-  // Warn before browser close if there's an empty note
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (selectedNote && isNoteEmpty(localTitle, localContent)) {
-        e.preventDefault();
-        e.returnValue = "You have an empty note. It will be deleted if you leave.";
-        return e.returnValue;
-      }
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [selectedNote, localTitle, localContent]);
 
   // Search notes
   const searchNotes = useCallback(async (query: string) => {
@@ -276,12 +259,7 @@ export function FocusNoteEditor({ initialNoteId, onNoteCreated }: FocusNoteEdito
     if (!error && data) {
       const folder = folders.find(f => f.id === data.folder_id);
       const note = { ...data, folder_name: folder?.name || "Unfiled" };
-      setSelectedNote(note);
-      setLocalTitle(note.title);
-      setLocalContent(note.content || "");
-      setEditorKey(prev => prev + 1);
-      setHasUnsavedChanges(false);
-      setIsSearchCollapsed(true);
+      addNoteToTabs(note, true);
     }
   };
 
@@ -292,21 +270,19 @@ export function FocusNoteEditor({ initialNoteId, onNoteCreated }: FocusNoteEdito
     return isDefaultTitle && !strippedContent;
   };
 
-  // Auto-delete empty note silently
-  const autoDeleteEmptyNote = async (noteId: string) => {
+  // Delete a note permanently
+  const deleteNote = async (noteId: string) => {
     await supabase.from("notes").delete().eq("id", noteId);
+    closeTab(noteId);
   };
 
-  // Handle switching notes or closing - auto-delete empty notes
-  const handleNoteSwitch = async (note: Note | null) => {
-    // If current note is empty, auto-delete it (no dialog)
-    if (selectedNote && isNoteEmpty(localTitle, localContent)) {
-      await autoDeleteEmptyNote(selectedNote.id);
-    }
-
+  // Handle adding a note from search - adds to tabs (can have multiple open)
+  const handleNoteSwitch = (note: Note | null) => {
     if (note) {
-      selectNote(note);
+      // Add to tabs (don't close current)
+      addNoteToTabs(note, true);
     } else {
+      // Close current tab
       clearNote();
     }
   };
@@ -314,10 +290,9 @@ export function FocusNoteEditor({ initialNoteId, onNoteCreated }: FocusNoteEdito
   // Cleanup function to delete empty note (for dialog compatibility)
   const deleteEmptyNote = async () => {
     if (selectedNote) {
-      await autoDeleteEmptyNote(selectedNote.id);
+      await deleteNote(selectedNote.id);
     }
     setShowSaveDeleteDialog(false);
-    clearNote();
     setPendingNote(null);
     setPendingAction(null);
   };
@@ -328,34 +303,63 @@ export function FocusNoteEditor({ initialNoteId, onNoteCreated }: FocusNoteEdito
     setPendingAction(null);
   };
 
-  // Select a note from search
-  const selectNote = (note: Note) => {
-    setSelectedNote(note);
-    setLocalTitle(note.title);
-    setLocalContent(note.content || "");
-    setEditorKey(prev => prev + 1);
-    setHasUnsavedChanges(false);
+  // Add note to tabs or switch to it if already open
+  const addNoteToTabs = (note: Note, makeActive: boolean = true) => {
+    const existingTab = openTabs.find(t => t.note.id === note.id);
+    if (existingTab) {
+      // Already open, just switch to it
+      if (makeActive) {
+        setActiveTabId(note.id);
+      }
+    } else {
+      // Add new tab
+      const newTab: TabNote = {
+        note,
+        localTitle: note.title,
+        localContent: note.content || "",
+        hasUnsavedChanges: false,
+        editorKey: Date.now(),
+      };
+      setOpenTabs(prev => [...prev, newTab]);
+      if (makeActive) {
+        setActiveTabId(note.id);
+      }
+    }
     setSearchQuery("");
     setShowDropdown(false);
     setIsSearchCollapsed(true);
   };
 
-  // Clear current note
+  // Select a note from search (replaces current note or adds to tabs)
+  const selectNote = (note: Note) => {
+    addNoteToTabs(note, true);
+  };
+
+  // Close a tab (without deleting the note)
+  const closeTab = (noteId: string) => {
+    setOpenTabs(prev => prev.filter(t => t.note.id !== noteId));
+
+    // If closing active tab, switch to another tab
+    if (activeTabId === noteId) {
+      const remainingTabs = openTabs.filter(t => t.note.id !== noteId);
+      if (remainingTabs.length > 0) {
+        setActiveTabId(remainingTabs[remainingTabs.length - 1].note.id);
+      } else {
+        setActiveTabId(null);
+        setIsSearchCollapsed(false);
+      }
+    }
+  };
+
+  // Clear current note (close active tab)
   const clearNote = () => {
-    setSelectedNote(null);
-    setLocalTitle("");
-    setLocalContent("");
-    setHasUnsavedChanges(false);
-    setIsSearchCollapsed(false);
+    if (activeTabId) {
+      closeTab(activeTabId);
+    }
   };
 
   // Create new note
   const createNewNote = async () => {
-    // Auto-delete current note if it's empty
-    if (selectedNote && isNoteEmpty(localTitle, localContent)) {
-      await autoDeleteEmptyNote(selectedNote.id);
-    }
-
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
@@ -374,88 +378,96 @@ export function FocusNoteEditor({ initialNoteId, onNoteCreated }: FocusNoteEdito
 
     if (!error && data) {
       const note = { ...data, folder_name: "Unfiled" };
-      setSelectedNote(note);
-      setLocalTitle(note.title);
-      setLocalContent("");
-      setEditorKey(prev => prev + 1);
-      setSearchQuery("");
-      setShowDropdown(false);
-      setIsSearchCollapsed(true);
+      addNoteToTabs(note, true);
       setIsEditingTitle(true);
       onNoteCreated?.(note.id);
-      
+
       setTimeout(() => titleInputRef.current?.focus(), 100);
     }
   };
 
+  // Helper to update a tab's state
+  const updateTab = (noteId: string, updates: Partial<TabNote>) => {
+    setOpenTabs(prev => prev.map(tab =>
+      tab.note.id === noteId ? { ...tab, ...updates } : tab
+    ));
+  };
+
+  // Helper to update a tab's note data
+  const updateTabNote = (noteId: string, noteUpdates: Partial<Note>) => {
+    setOpenTabs(prev => prev.map(tab =>
+      tab.note.id === noteId ? { ...tab, note: { ...tab.note, ...noteUpdates } } : tab
+    ));
+  };
+
   // Auto-save logic
-  const debouncedSave = useCallback(async (title: string, content: string) => {
-    if (!selectedNote) return;
-    
+  const debouncedSave = useCallback(async (noteId: string, title: string, content: string) => {
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
-    
-    setHasUnsavedChanges(true);
-    
+
+    // Mark as having unsaved changes
+    updateTab(noteId, { hasUnsavedChanges: true });
+
     saveTimeoutRef.current = setTimeout(async () => {
       setIsSaving(true);
-      
+
       const { error } = await supabase
         .from("notes")
-        .update({ 
-          title, 
-          content, 
-          updated_at: new Date().toISOString() 
+        .update({
+          title,
+          content,
+          updated_at: new Date().toISOString()
         })
-        .eq("id", selectedNote.id);
+        .eq("id", noteId);
 
       if (!error) {
-        setSelectedNote({ ...selectedNote, title, content });
-        setHasUnsavedChanges(false);
+        updateTab(noteId, { hasUnsavedChanges: false });
+        updateTabNote(noteId, { title, content });
       }
       setIsSaving(false);
     }, 1000);
-  }, [selectedNote, supabase]);
+  }, [supabase]);
 
   // Update title
   const handleTitleChange = (newTitle: string) => {
-    setLocalTitle(newTitle);
-    debouncedSave(newTitle, localContent);
+    if (!activeTabId) return;
+    updateTab(activeTabId, { localTitle: newTitle });
+    debouncedSave(activeTabId, newTitle, localContent);
   };
 
   // Update content
   const handleContentChange = (newContent: string) => {
-    setLocalContent(newContent);
-    debouncedSave(localTitle, newContent);
+    if (!activeTabId) return;
+    updateTab(activeTabId, { localContent: newContent });
+    debouncedSave(activeTabId, localTitle, newContent);
   };
 
   // Toggle starred
   const toggleStarred = async () => {
     if (!selectedNote) return;
-    
+
     const newStarred = !selectedNote.is_starred;
-    
+
     await supabase
       .from("notes")
       .update({ is_starred: newStarred })
       .eq("id", selectedNote.id);
-    
-    setSelectedNote({ ...selectedNote, is_starred: newStarred });
+
+    updateTabNote(selectedNote.id, { is_starred: newStarred });
   };
 
   // Update folder
   const updateFolder = async (folderId: string | null) => {
     if (!selectedNote) return;
-    
+
     await supabase
       .from("notes")
       .update({ folder_id: folderId })
       .eq("id", selectedNote.id);
-    
+
     const folder = folders.find(f => f.id === folderId);
-    setSelectedNote({ 
-      ...selectedNote, 
+    updateTabNote(selectedNote.id, {
       folder_id: folderId,
       folder_name: folder?.name || "Unfiled"
     });
@@ -464,36 +476,36 @@ export function FocusNoteEditor({ initialNoteId, onNoteCreated }: FocusNoteEdito
   // Update note type
   const updateNoteType = async (noteType: string) => {
     if (!selectedNote) return;
-    
+
     await supabase
       .from("notes")
       .update({ note_type: noteType })
       .eq("id", selectedNote.id);
-    
-    setSelectedNote({ ...selectedNote, note_type: noteType });
+
+    updateTabNote(selectedNote.id, { note_type: noteType });
   };
 
   // Add label
   const addLabel = async (label: string) => {
     if (!selectedNote || !label.trim()) return;
-    
+
     const newTags = [...(selectedNote.tags || [])];
     if (!newTags.includes(label.trim())) {
       newTags.push(label.trim());
-      
+
       await supabase
         .from("notes")
         .update({ tags: newTags })
         .eq("id", selectedNote.id);
-      
-      setSelectedNote({ ...selectedNote, tags: newTags });
-      
+
+      updateTabNote(selectedNote.id, { tags: newTags });
+
       // Add to all labels if new
       if (!allLabels.includes(label.trim())) {
         setAllLabels([...allLabels, label.trim()].sort());
       }
     }
-    
+
     setLabelInput("");
     setShowLabelPopover(false);
   };
@@ -501,15 +513,15 @@ export function FocusNoteEditor({ initialNoteId, onNoteCreated }: FocusNoteEdito
   // Remove label
   const removeLabel = async (label: string) => {
     if (!selectedNote) return;
-    
+
     const newTags = (selectedNote.tags || []).filter(t => t !== label);
-    
+
     await supabase
       .from("notes")
       .update({ tags: newTags })
       .eq("id", selectedNote.id);
-    
-    setSelectedNote({ ...selectedNote, tags: newTags });
+
+    updateTabNote(selectedNote.id, { tags: newTags });
   };
 
   // Format date
@@ -534,7 +546,7 @@ export function FocusNoteEditor({ initialNoteId, onNoteCreated }: FocusNoteEdito
   return (
     <>
       <Card className="flex-1 border-[#E8DCC4] flex flex-col min-h-0">
-        <CardHeader 
+        <CardHeader
           className="pb-2 cursor-pointer flex-shrink-0 py-3"
           onClick={() => setIsExpanded(!isExpanded)}
         >
@@ -542,9 +554,6 @@ export function FocusNoteEditor({ initialNoteId, onNoteCreated }: FocusNoteEdito
             <div className="flex items-center gap-2">
               <FileText className="w-4 h-4 text-[#5C7A6B]" />
               <CardTitle className="text-sm">Notes</CardTitle>
-              {selectedNote && (
-                <span className="text-xs text-[#8B9A8F] truncate max-w-40">• {selectedNote.title}</span>
-              )}
               {isSaving && <span className="text-xs text-[#8B9A8F]">Saving...</span>}
               {hasUnsavedChanges && !isSaving && <span className="text-xs text-amber-600">Unsaved</span>}
             </div>
@@ -830,6 +839,17 @@ export function FocusNoteEditor({ initialNoteId, onNoteCreated }: FocusNoteEdito
                     </SelectContent>
                   </Select>
 
+                  {/* Delete note */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => selectedNote && deleteNote(selectedNote.id)}
+                    className="h-7 w-7 p-0 hover:text-red-600"
+                    title="Delete note"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-[#8B9A8F]" />
+                  </Button>
+
                   {/* Close note */}
                   <Button
                     variant="ghost"
@@ -844,15 +864,64 @@ export function FocusNoteEditor({ initialNoteId, onNoteCreated }: FocusNoteEdito
               </div>
             )}
 
+            {/* Horizontal Tabs - shows when multiple notes open */}
+            {openTabs.length > 1 && (
+              <div className="flex items-center gap-1 mb-2 pb-2 border-b border-[#E8DCC4] overflow-x-auto">
+                {openTabs.map((tab) => {
+                  const isActive = tab.note.id === activeTabId;
+                  return (
+                    <button
+                      key={tab.note.id}
+                      onClick={() => setActiveTabId(tab.note.id)}
+                      className={cn(
+                        "relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap group",
+                        isActive
+                          ? "bg-[#2D5A47] text-white"
+                          : "bg-[#F5F0E6] text-[#5C7A6B] hover:bg-[#E8DCC4]"
+                      )}
+                    >
+                      <span className="max-w-24 truncate">{tab.localTitle || "Untitled"}</span>
+                      {tab.hasUnsavedChanges && (
+                        <div className="w-1.5 h-1.5 bg-amber-500 rounded-full flex-shrink-0" />
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          closeTab(tab.note.id);
+                        }}
+                        className={cn(
+                          "ml-1 p-0.5 rounded opacity-60 hover:opacity-100 transition-opacity",
+                          isActive ? "hover:bg-white/20" : "hover:bg-[#8B9A8F]/20"
+                        )}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Meeting Event Badge - shown for meeting notes with linked calendar event */}
+            {selectedNote && selectedNote.note_type === "meeting" && selectedNote.calendar_event_id && (
+              <div className="mb-2">
+                <MeetingEventBadge
+                  calendarEventId={selectedNote.calendar_event_id}
+                />
+              </div>
+            )}
+
             {/* Editor */}
             <div className="flex-1 min-h-0 border border-[#E8DCC4] rounded-lg overflow-hidden bg-white">
               {selectedNote ? (
                 <div className="h-full overflow-y-auto">
                   <RichEditor
-                    key={editorKey}
+                    key={activeTab?.editorKey || 0}
                     content={localContent}
                     onChange={handleContentChange}
-                    placeholder="Start writing..."
+                    placeholder="Start writing... (use / for formatting commands)"
+                    noteId={selectedNote.id}
+                    hideToolbar
                   />
                 </div>
               ) : (

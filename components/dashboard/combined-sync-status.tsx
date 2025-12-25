@@ -24,12 +24,19 @@ export function CombinedSyncStatus() {
   const initialSyncDone = useRef(false);
 
   // Combined sync function
-  const syncAll = useCallback(async (trigger: string = "manual") => {
+  // forceTickTick and forceGcal allow bypassing state check when connection was just verified
+  const syncAll = useCallback(async (
+    trigger: string = "manual",
+    options?: { forceTickTick?: boolean; forceGcal?: boolean }
+  ) => {
+    const shouldSyncTickTick = options?.forceTickTick || ticktick.isConnected;
+    const shouldSyncGcal = options?.forceGcal || gcal.isConnected;
+
     const results = await Promise.allSettled([
-      ticktick.isConnected ? ticktick.manualSync() : Promise.resolve(null),
-      gcal.isConnected ? gcal.manualSync(trigger) : Promise.resolve(null),
+      shouldSyncTickTick ? ticktick.manualSync() : Promise.resolve(null),
+      shouldSyncGcal ? gcal.manualSync(trigger) : Promise.resolve(null),
     ]);
-    
+
     // Refresh data after sync
     await Promise.allSettled([
       refreshTasks(),
@@ -53,9 +60,13 @@ export function CombinedSyncStatus() {
       ]);
 
       // Small delay for page render, then sync
+      // Pass force options to bypass state check since we just verified connection
       setTimeout(async () => {
         if (ticktickConnected || gcalConnected) {
-          await syncAll("initial");
+          await syncAll("initial", {
+            forceTickTick: ticktickConnected,
+            forceGcal: gcalConnected,
+          });
         }
       }, 500);
     };

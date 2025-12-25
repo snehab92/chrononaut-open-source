@@ -27,6 +27,8 @@ export interface PersistentContext {
   aboutMeFiles: AboutMeFile[];
   savedMemories: SavedMemory[];
   assessmentHighlights: AssessmentHighlight[];
+  aiInsights: AiInsight[];
+  projectInstructions?: string;
 }
 
 /**
@@ -121,7 +123,9 @@ export interface LayerConfig {
 export type PersistentSource =
   | "about_me_files"
   | "saved_memories"
-  | "assessments";
+  | "assessments"
+  | "project_instructions"
+  | "pattern_insights";
 
 export type LiveSource =
   | "recovery_score"
@@ -161,6 +165,14 @@ export interface SavedMemory {
   content: string;
   agentType: AgentType;
   importance: number;
+  createdAt: Date;
+}
+
+export interface AiInsight {
+  id: string;
+  insightType: string;
+  content: string;
+  sourceType: string;
   createdAt: Date;
 }
 
@@ -232,22 +244,36 @@ export const AGENT_CONTEXT_CONFIGS: Record<AgentType, AgentContextConfig> = {
     agentType: "pattern-analyst",
     layers: {
       static: { enabled: true, budgetTokens: 800 },
-      persistent: { enabled: true, budgetTokens: 500, sources: ["assessments"] },
+      persistent: {
+        enabled: true,
+        budgetTokens: 800,
+        sources: ["about_me_files", "assessments"],
+      },
       conversational: { enabled: false, budgetTokens: 0 }, // Background agent
       live: {
         enabled: true,
-        budgetTokens: 1500,
+        budgetTokens: 2000,
         sources: [
-          "journal_recent",
+          "recovery_score",
+          "sleep_data",
           "health_trends",
-          "task_patterns",
+          "todays_tasks",
+          "overdue_tasks",
+          "upcoming_calendar",
+          "focus_session",
+          "journal_recent",
           "mood_patterns",
           "energy_patterns",
+          "task_patterns",
         ],
       },
-      reference: { enabled: false, budgetTokens: 0 },
+      reference: {
+        enabled: true,
+        budgetTokens: 1000,
+        sources: ["notes", "folders"],
+      },
     },
-    totalBudget: 4000,
+    totalBudget: 5500,
   },
 
   "research-assistant": {
@@ -256,18 +282,34 @@ export const AGENT_CONTEXT_CONFIGS: Record<AgentType, AgentContextConfig> = {
       static: { enabled: true, budgetTokens: 600 },
       persistent: {
         enabled: true,
-        budgetTokens: 1000,
-        sources: ["about_me_files"],
+        budgetTokens: 1200,
+        sources: ["about_me_files", "saved_memories", "project_instructions", "pattern_insights"],
       },
       conversational: { enabled: true, budgetTokens: 2000, maxMessages: 6 },
-      live: { enabled: false, budgetTokens: 0 },
+      live: {
+        enabled: true,
+        budgetTokens: 1500,
+        sources: [
+          "recovery_score",
+          "sleep_data",
+          "health_trends",
+          "todays_tasks",
+          "overdue_tasks",
+          "upcoming_calendar",
+          "focus_session",
+          "journal_recent",
+          "mood_patterns",
+          "energy_patterns",
+          "task_patterns",
+        ],
+      },
       reference: {
         enabled: true,
-        budgetTokens: 2000,
+        budgetTokens: 1500,
         sources: ["notes", "folders"],
       },
     },
-    totalBudget: 6000,
+    totalBudget: 8000,
   },
 
   "executive-coach": {
@@ -276,24 +318,34 @@ export const AGENT_CONTEXT_CONFIGS: Record<AgentType, AgentContextConfig> = {
       static: { enabled: true, budgetTokens: 800 },
       persistent: {
         enabled: true,
-        budgetTokens: 800,
-        sources: ["about_me_files", "saved_memories"],
+        budgetTokens: 1200,
+        sources: ["about_me_files", "saved_memories", "project_instructions", "pattern_insights"],
       },
       conversational: { enabled: true, budgetTokens: 2000, maxMessages: 8 },
       live: {
         enabled: true,
-        budgetTokens: 1200,
+        budgetTokens: 1500,
         sources: [
+          "recovery_score",
+          "sleep_data",
+          "health_trends",
           "todays_tasks",
           "overdue_tasks",
           "upcoming_calendar",
           "focus_session",
-          "recovery_score",
+          "journal_recent",
+          "mood_patterns",
+          "energy_patterns",
+          "task_patterns",
         ],
       },
-      reference: { enabled: false, budgetTokens: 0 },
+      reference: {
+        enabled: true,
+        budgetTokens: 1000,
+        sources: ["notes", "folders"],
+      },
     },
-    totalBudget: 5500,
+    totalBudget: 7500,
   },
 
   therapist: {
@@ -302,18 +354,34 @@ export const AGENT_CONTEXT_CONFIGS: Record<AgentType, AgentContextConfig> = {
       static: { enabled: true, budgetTokens: 800 },
       persistent: {
         enabled: true,
-        budgetTokens: 1000,
-        sources: ["saved_memories", "assessments"],
+        budgetTokens: 1200,
+        sources: ["about_me_files", "saved_memories", "assessments", "project_instructions", "pattern_insights"],
       },
-      conversational: { enabled: true, budgetTokens: 3000, maxMessages: 10 }, // Longer context
+      conversational: { enabled: true, budgetTokens: 3000, maxMessages: 10 },
       live: {
         enabled: true,
-        budgetTokens: 800,
-        sources: ["journal_recent", "mood_patterns"],
+        budgetTokens: 1500,
+        sources: [
+          "recovery_score",
+          "sleep_data",
+          "health_trends",
+          "todays_tasks",
+          "overdue_tasks",
+          "upcoming_calendar",
+          "focus_session",
+          "journal_recent",
+          "mood_patterns",
+          "energy_patterns",
+          "task_patterns",
+        ],
       },
-      reference: { enabled: false, budgetTokens: 0 },
+      reference: {
+        enabled: true,
+        budgetTokens: 1000,
+        sources: ["notes", "folders"],
+      },
     },
-    totalBudget: 6000,
+    totalBudget: 8500,
   },
 };
 

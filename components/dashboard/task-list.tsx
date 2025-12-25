@@ -59,7 +59,7 @@ interface TaskAnalysis {
 type ViewMode = "today" | "week";
 type SortMode = "priority" | "time-asc" | "time-desc" | "suggested";
 
-// List badge colors - consistent hashing for visual distinction
+// List badge colors - expanded palette for better visual distinction
 const LIST_COLORS = [
   { bg: "bg-purple-100", text: "text-purple-700", border: "border-purple-200" },
   { bg: "bg-blue-100", text: "text-blue-700", border: "border-blue-200" },
@@ -69,6 +69,14 @@ const LIST_COLORS = [
   { bg: "bg-cyan-100", text: "text-cyan-700", border: "border-cyan-200" },
   { bg: "bg-indigo-100", text: "text-indigo-700", border: "border-indigo-200" },
   { bg: "bg-rose-100", text: "text-rose-700", border: "border-rose-200" },
+  { bg: "bg-teal-100", text: "text-teal-700", border: "border-teal-200" },
+  { bg: "bg-orange-100", text: "text-orange-700", border: "border-orange-200" },
+  { bg: "bg-violet-100", text: "text-violet-700", border: "border-violet-200" },
+  { bg: "bg-emerald-100", text: "text-emerald-700", border: "border-emerald-200" },
+  { bg: "bg-fuchsia-100", text: "text-fuchsia-700", border: "border-fuchsia-200" },
+  { bg: "bg-sky-100", text: "text-sky-700", border: "border-sky-200" },
+  { bg: "bg-lime-100", text: "text-lime-700", border: "border-lime-200" },
+  { bg: "bg-red-100", text: "text-red-700", border: "border-red-200" },
 ];
 
 const SECTION_COLORS = [
@@ -79,10 +87,11 @@ const SECTION_COLORS = [
   { bg: "bg-gray-100", text: "text-gray-600", border: "border-gray-200" },
 ];
 
+// DJB2 hash function for better distribution
 function getListColor(listName: string) {
-  let hash = 0;
+  let hash = 5381;
   for (let i = 0; i < listName.length; i++) {
-    hash = listName.charCodeAt(i) + ((hash << 5) - hash);
+    hash = ((hash << 5) + hash) ^ listName.charCodeAt(i);
   }
   return LIST_COLORS[Math.abs(hash) % LIST_COLORS.length];
 }
@@ -417,8 +426,7 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
 
             {/* Row 3: Date + AI insights */}
             <div className="flex items-center gap-3 flex-wrap">
-              {/* Date picker */}
-            {viewMode === "today" && (
+              {/* Date picker/display */}
               <Popover>
                 <PopoverTrigger asChild>
                   <button
@@ -467,7 +475,6 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
                   </div>
                 </PopoverContent>
               </Popover>
-            )}
 
             {/* AI Insights */}
             {showAiInsights && analysis && (
@@ -499,11 +506,18 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
                         <li key={i}>• {f}</li>
                       ))}
                     </ul>
-                    {analysis.timeEstimate.source === "ai_guess" && (
-                      <p className="text-xs mt-2 pt-2 border-t text-muted-foreground italic">
-                        💡 Add [u.e 30m] to task details for personalized estimates
+                    <div className="mt-2 pt-2 border-t">
+                      <p className="text-xs font-medium">Prioritization:</p>
+                      <p className="text-xs text-muted-foreground">
+                        Suggested order: #{analysis.prioritization.suggestedOrder}
                       </p>
-                    )}
+                      <p className="text-xs text-muted-foreground">
+                        Best time: {analysis.prioritization.suggestedTimeOfDay}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {analysis.prioritization.explanation}
+                      </p>
+                    </div>
                   </TooltipContent>
                 </Tooltip>
 

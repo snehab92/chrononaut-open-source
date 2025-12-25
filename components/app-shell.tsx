@@ -12,7 +12,6 @@ import {
   LayoutDashboard,
   FileText,
   Timer,
-  Users,
   BookOpen,
   Plus,
   Menu,
@@ -23,12 +22,12 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { useQuickTask } from "@/components/shared/quick-task-dialog";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, shortcut: "⌘D" },
   { href: "/notes", label: "Notes", icon: FileText, shortcut: "⌘N" },
   { href: "/focus", label: "Focus", icon: Timer, shortcut: "⌘F" },
-  { href: "/meeting", label: "Meeting", icon: Users, shortcut: "⌘M" },
   { href: "/journal", label: "Journal", icon: BookOpen, shortcut: "⌘J" },
 ];
 
@@ -42,6 +41,7 @@ export function AppShell({ children, user }: AppShellProps) {
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { openDialog: openQuickTask } = useQuickTask();
 
   const handleLogout = async () => {
     const supabase = createClient();
@@ -99,6 +99,7 @@ export function AppShell({ children, user }: AppShellProps) {
           <TooltipTrigger asChild>
             <Button
               variant="outline"
+              onClick={openQuickTask}
               className={cn(
                 "mb-6 gap-2 border-[#D4C5A9] bg-gradient-to-r from-[#F5F0E6] to-[#FDFBF7] hover:from-[#EDE5D4] hover:to-[#F5F0E6] text-[#5C4B32] shadow-sm transition-all duration-200 hover:shadow-md hover:scale-[1.02]",
                 collapsed && !mobile ? "w-10 h-10 p-0" : "w-full justify-start h-11"
@@ -108,14 +109,14 @@ export function AppShell({ children, user }: AppShellProps) {
               {(!collapsed || mobile) && <span className="font-medium">Quick Task</span>}
               {(!collapsed || mobile) && (
                 <kbd className="ml-auto text-xs text-[#8B7355] bg-white/60 px-2 py-0.5 rounded-md border border-[#D4C5A9]">
-                  ⌘T
+                  /t
                 </kbd>
               )}
             </Button>
           </TooltipTrigger>
           {collapsed && !mobile && (
             <TooltipContent side="right" className="bg-[#1E3D32] text-[#E8DCC4] border-none">
-              Quick Task (⌘T)
+              Quick Task (/t)
             </TooltipContent>
           )}
         </Tooltip>

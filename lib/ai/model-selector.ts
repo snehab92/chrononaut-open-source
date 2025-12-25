@@ -22,7 +22,7 @@ export type TaskType =
   | "pattern-analysis"
   | "multi-step-workflow";
 
-export type ModelId = "claude-sonnet-4-20250514" | "claude-haiku-4-20250514";
+export type ModelId = "claude-3-5-sonnet-20241022" | "claude-3-5-haiku-20241022" | "claude-sonnet-4-20250514";
 
 export type TaskComplexity = "simple" | "moderate" | "complex";
 
@@ -40,8 +40,9 @@ export interface ModelConfig {
  * Pricing per 1M tokens (December 2025)
  */
 export const MODEL_PRICING: Record<ModelId, { input: number; output: number }> = {
+  "claude-3-5-sonnet-20241022": { input: 3.0, output: 15.0 },
+  "claude-3-5-haiku-20241022": { input: 0.25, output: 1.25 },
   "claude-sonnet-4-20250514": { input: 3.0, output: 15.0 },
-  "claude-haiku-4-20250514": { input: 0.25, output: 1.25 },
 };
 
 /**
@@ -55,7 +56,7 @@ export const MODEL_CONFIGS: Record<TaskType, ModelConfig> = {
   "mood-inference": {
     taskType: "mood-inference",
     complexity: "simple",
-    model: "claude-haiku-4-20250514",
+    model: "claude-3-5-haiku-20241022",
     maxInputTokens: 1500,
     maxOutputTokens: 100,
     cacheable: true,
@@ -65,7 +66,7 @@ export const MODEL_CONFIGS: Record<TaskType, ModelConfig> = {
   "task-time-estimate": {
     taskType: "task-time-estimate",
     complexity: "simple",
-    model: "claude-haiku-4-20250514",
+    model: "claude-3-5-haiku-20241022",
     maxInputTokens: 800,
     maxOutputTokens: 200,
     cacheable: true,
@@ -75,7 +76,7 @@ export const MODEL_CONFIGS: Record<TaskType, ModelConfig> = {
   "quick-start": {
     taskType: "quick-start",
     complexity: "simple",
-    model: "claude-haiku-4-20250514",
+    model: "claude-3-5-haiku-20241022",
     maxInputTokens: 600,
     maxOutputTokens: 400,
     cacheable: false, // Context-dependent
@@ -85,7 +86,7 @@ export const MODEL_CONFIGS: Record<TaskType, ModelConfig> = {
   "simple-chat": {
     taskType: "simple-chat",
     complexity: "simple",
-    model: "claude-haiku-4-20250514",
+    model: "claude-3-5-haiku-20241022",
     maxInputTokens: 1000,
     maxOutputTokens: 600,
     cacheable: false,
@@ -95,7 +96,7 @@ export const MODEL_CONFIGS: Record<TaskType, ModelConfig> = {
   "energy-classification": {
     taskType: "energy-classification",
     complexity: "simple",
-    model: "claude-haiku-4-20250514",
+    model: "claude-3-5-haiku-20241022",
     maxInputTokens: 1000,
     maxOutputTokens: 100,
     cacheable: true,
@@ -109,7 +110,7 @@ export const MODEL_CONFIGS: Record<TaskType, ModelConfig> = {
   "daily-insight": {
     taskType: "daily-insight",
     complexity: "moderate",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-3-5-sonnet-20241022",
     maxInputTokens: 4000,
     maxOutputTokens: 1000,
     cacheable: true,
@@ -119,7 +120,7 @@ export const MODEL_CONFIGS: Record<TaskType, ModelConfig> = {
   "weekly-review": {
     taskType: "weekly-review",
     complexity: "complex",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-3-5-sonnet-20241022",
     maxInputTokens: 8000,
     maxOutputTokens: 3000,
     cacheable: true,
@@ -129,7 +130,7 @@ export const MODEL_CONFIGS: Record<TaskType, ModelConfig> = {
   "research-synthesis": {
     taskType: "research-synthesis",
     complexity: "complex",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-3-5-sonnet-20241022",
     maxInputTokens: 6000,
     maxOutputTokens: 2500,
     cacheable: false,
@@ -139,7 +140,7 @@ export const MODEL_CONFIGS: Record<TaskType, ModelConfig> = {
   "meeting-prep": {
     taskType: "meeting-prep",
     complexity: "complex",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-3-5-sonnet-20241022",
     maxInputTokens: 4000,
     maxOutputTokens: 2000,
     cacheable: false,
@@ -149,7 +150,7 @@ export const MODEL_CONFIGS: Record<TaskType, ModelConfig> = {
   "therapy-reflection": {
     taskType: "therapy-reflection",
     complexity: "complex",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-3-5-sonnet-20241022",
     maxInputTokens: 3000,
     maxOutputTokens: 1500,
     cacheable: false,
@@ -159,7 +160,7 @@ export const MODEL_CONFIGS: Record<TaskType, ModelConfig> = {
   "coaching-session": {
     taskType: "coaching-session",
     complexity: "complex",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-3-5-sonnet-20241022",
     maxInputTokens: 3000,
     maxOutputTokens: 1200,
     cacheable: false,
@@ -169,7 +170,7 @@ export const MODEL_CONFIGS: Record<TaskType, ModelConfig> = {
   "pattern-analysis": {
     taskType: "pattern-analysis",
     complexity: "moderate",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-3-5-sonnet-20241022",
     maxInputTokens: 5000,
     maxOutputTokens: 1500,
     cacheable: true,
@@ -179,7 +180,7 @@ export const MODEL_CONFIGS: Record<TaskType, ModelConfig> = {
   "multi-step-workflow": {
     taskType: "multi-step-workflow",
     complexity: "complex",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-3-5-sonnet-20241022",
     maxInputTokens: 6000,
     maxOutputTokens: 2000,
     cacheable: false,
@@ -216,7 +217,7 @@ export function selectModel(
       // Escalate to Sonnet for longer conversations
       return {
         ...baseConfig,
-        model: "claude-sonnet-4-20250514",
+        model: "claude-3-5-sonnet-20241022",
         complexity: "moderate",
         maxInputTokens: 3000, // Increase budget for complex conversation
         maxOutputTokens: 1200,
@@ -363,7 +364,7 @@ export function getOptimizedPrompt(
   fullPrompt: string
 ): string {
   // Use compressed prompts for Haiku to save tokens
-  if (model === "claude-haiku-4-20250514") {
+  if (model === "claude-3-5-haiku-20241022") {
     const compressed =
       COMPRESSED_PROMPTS[agentType as keyof typeof COMPRESSED_PROMPTS];
     if (compressed) {

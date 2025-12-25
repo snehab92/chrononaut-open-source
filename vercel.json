@@ -3,11 +3,15 @@
   "crons": [
     {
       "path": "/api/cron/morning-insight",
-      "schedule": "0 12 * * *"
+      "schedule": "0 * * * *"
     },
     {
       "path": "/api/cron/weekly-review",
       "schedule": "0 14 * * 0"
+    },
+    {
+      "path": "/api/cron/values-alignment",
+      "schedule": "0 8 * * 0"
     }
   ]
 }

@@ -2,11 +2,12 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { 
+import {
   Send, MessageSquare, Copy, Check,
   History, Plus, Trash2, ClipboardPaste, Pencil, Minus,
-  MoreVertical, FileText, Settings, Brain, BookOpen
+  MoreVertical, FileText, Settings, Brain, BookOpen, ArrowLeft
 } from "lucide-react";
+import { useNoteEditor } from "@/components/notes/note-editor-context";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -81,6 +82,8 @@ interface Conversation {
   agent_type: AgentType;
   created_at: string;
   updated_at: string;
+  last_message_at?: string;
+  lastMessagePreview?: string;
 }
 
 interface AgentInstruction {
@@ -132,17 +135,16 @@ export function ChatDrawer({
   const [agentType, setAgentType] = useState<AgentType>(getInitialAgent());
   const [conversationId, setConversationId] = useState<string>("");
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [viewMode, setViewMode] = useState<'chat' | 'history'>('chat');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState<string | null>(null);
   const [editTitleValue, setEditTitleValue] = useState("");
+  const [pastedMessageIds, setPastedMessageIds] = useState<Set<string>>(new Set());
   
   const [messages, setMessages] = useState<Array<{ id: string; role: "user" | "assistant"; content: string }>>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [isHydrated, setIsHydrated] = useState(false);
-  const [savedToNoteIds, setSavedToNoteIds] = useState<Set<string>>(new Set());
-  const [isSavingChat, setIsSavingChat] = useState(false);
   
   // Agent instructions & memory state
   const [showInstructionsModal, setShowInstructionsModal] = useState(false);
@@ -155,6 +157,7 @@ export function ChatDrawer({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const supabase = createClient();
+  const { pasteToActiveEditor, hasActiveEditor, onCreateNoteAndPaste } = useNoteEditor();
 
   const agent = AGENTS[agentType];
 
@@ -209,20 +212,34 @@ export function ChatDrawer({
   }, [agentType]);
 
   const loadAgentInstructions = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-    const { data } = await supabase
-      .from("agent_instructions")
-      .select("*")
-      .eq("user_id", user.id)
-      .eq("agent_type", agentType)
-      .single();
+      const { data, error } = await supabase
+        .from("agent_instructions")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("agent_type", agentType)
+        .maybeSingle();
 
-    if (data) {
-      setAgentInstructions(data);
-      setInstructionsText(data.instructions);
-    } else {
+      if (error) {
+        console.error("[ChatDrawer] Failed to load agent instructions:", error);
+        // Don't block the chat if instructions fail to load
+        setAgentInstructions(null);
+        setInstructionsText("");
+        return;
+      }
+
+      if (data) {
+        setAgentInstructions(data);
+        setInstructionsText(data.instructions);
+      } else {
+        setAgentInstructions(null);
+        setInstructionsText("");
+      }
+    } catch (err) {
+      console.error("[ChatDrawer] Error loading agent instructions:", err);
       setAgentInstructions(null);
       setInstructionsText("");
     }
@@ -375,21 +392,42 @@ export function ChatDrawer({
   const loadConversations = useCallback(async () => {
     const { data } = await supabase
       .from("ai_conversations")
-      .select("id, title, agent_type, created_at, updated_at")
+      .select("id, title, agent_type, created_at, updated_at, last_message_at")
       .eq("agent_type", agentType)
-      .order("created_at", { ascending: false })
+      .order("last_message_at", { ascending: false, nullsFirst: false })
       .limit(50);
-    
+
     if (data) {
-      setConversations(data as Conversation[]);
+      // Fetch last message preview for each conversation
+      const conversationsWithPreviews = await Promise.all(
+        data.map(async (conv) => {
+          const { data: lastMessage } = await supabase
+            .from("ai_messages")
+            .select("content, role")
+            .eq("conversation_id", conv.id)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .single();
+
+          const preview = lastMessage?.content
+            ? lastMessage.content.replace(/\*\*|__|\*|_|`|#/g, '').slice(0, 100) + (lastMessage.content.length > 100 ? "..." : "")
+            : "";
+
+          return {
+            ...conv,
+            lastMessagePreview: preview,
+          } as Conversation;
+        })
+      );
+      setConversations(conversationsWithPreviews);
     }
   }, [supabase, agentType]);
 
   useEffect(() => {
-    if (showHistoryModal) {
+    if (viewMode === 'history') {
       loadConversations();
     }
-  }, [showHistoryModal, agentType, loadConversations]);
+  }, [viewMode, agentType, loadConversations]);
 
   const loadConversation = async (conv: Conversation) => {
     const { data: messagesData } = await supabase
@@ -406,13 +444,13 @@ export function ChatDrawer({
       }));
       setMessages(loadedMessages);
       setConversationId(conv.id);
-      
+
       agentChatCache[agentType] = {
         conversationId: conv.id,
         messages: loadedMessages,
       };
-      
-      setShowHistoryModal(false);
+
+      setViewMode('chat');
     }
   };
 
@@ -421,7 +459,7 @@ export function ChatDrawer({
     setMessages([]);
     setConversationId(newId);
     delete agentChatCache[agentType];
-    setShowHistoryModal(false);
+    setViewMode('chat');
   };
 
   const deleteConversation = async (convId: string, e: React.MouseEvent) => {
@@ -454,6 +492,38 @@ export function ChatDrawer({
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const handlePasteToNote = async (content: string, messageId: string) => {
+    // Convert markdown to HTML for the editor
+    const htmlContent = `<p>${markdownToHtml(content)}</p>`;
+
+    // Try to paste to active editor
+    const success = pasteToActiveEditor(htmlContent);
+
+    if (success) {
+      setPastedMessageIds(prev => new Set([...prev, messageId]));
+      setTimeout(() => {
+        setPastedMessageIds(prev => {
+          const next = new Set(prev);
+          next.delete(messageId);
+          return next;
+        });
+      }, 2000);
+    } else if (onCreateNoteAndPaste) {
+      // No active editor - create a new note
+      const noteId = await onCreateNoteAndPaste(htmlContent);
+      if (noteId) {
+        setPastedMessageIds(prev => new Set([...prev, messageId]));
+        setTimeout(() => {
+          setPastedMessageIds(prev => {
+            const next = new Set(prev);
+            next.delete(messageId);
+            return next;
+          });
+        }, 2000);
+      }
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -470,131 +540,6 @@ export function ChatDrawer({
     if (diffDays === 1) return "Yesterday";
     if (diffDays < 7) return `${diffDays} days ago`;
     return date.toLocaleDateString();
-  };
-
-  const saveMessageToNote = async (messageContent: string, messageId: string) => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const folderName = agent.name;
-      let folderId: string | null = null;
-      
-      const { data: existingFolders } = await supabase
-        .from("folders")
-        .select("id, name, folder_type")
-        .eq("user_id", user.id);
-      
-      const matchingFolder = existingFolders?.find(
-        f => f.name === folderName && f.folder_type === "ai_conversations"
-      );
-      
-      if (matchingFolder) {
-        folderId = matchingFolder.id;
-      } else {
-        const { data: newFolder } = await supabase
-          .from("folders")
-          .insert({ 
-            user_id: user.id, 
-            name: folderName,
-            folder_type: "ai_conversations"
-          })
-          .select()
-          .single();
-        
-        folderId = newFolder?.id || null;
-      }
-
-      const plainTitle = messageContent.replace(/\*\*|__|\*|_|`/g, '').trim();
-      const title = plainTitle.slice(0, 50) + (plainTitle.length > 50 ? "..." : "");
-
-      const { error: noteErr } = await supabase
-        .from("notes")
-        .insert({
-          user_id: user.id,
-          title: title || "AI Response",
-          content: `<p>${markdownToHtml(messageContent)}</p>`,
-          note_type: "document",
-          folder_id: folderId,
-          tags: [],
-        });
-
-      if (!noteErr) {
-        setSavedToNoteIds(prev => new Set([...prev, messageId]));
-      }
-    } catch (error) {
-      console.error("Failed to save message to note:", error);
-    }
-  };
-
-  const saveChatToNote = async () => {
-    if (messages.length === 0) return;
-    setIsSavingChat(true);
-    
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setIsSavingChat(false);
-        return;
-      }
-
-      const folderName = agent.name;
-      let folderId: string | null = null;
-      
-      const { data: existingFolders } = await supabase
-        .from("folders")
-        .select("id, name, folder_type")
-        .eq("user_id", user.id);
-      
-      const matchingFolder = existingFolders?.find(
-        f => f.name === folderName && f.folder_type === "ai_conversations"
-      );
-      
-      if (matchingFolder) {
-        folderId = matchingFolder.id;
-      } else {
-        const { data: newFolder } = await supabase
-          .from("folders")
-          .insert({ 
-            user_id: user.id, 
-            name: folderName,
-            folder_type: "ai_conversations"
-          })
-          .select()
-          .single();
-        
-        folderId = newFolder?.id || null;
-      }
-
-      const firstUserMsg = messages.find(m => m.role === "user");
-      const plainTitle = firstUserMsg 
-        ? firstUserMsg.content.replace(/\*\*|__|\*|_|`/g, '').trim()
-        : '';
-      const title = plainTitle 
-        ? plainTitle.slice(0, 50) + (plainTitle.length > 50 ? "..." : "")
-        : `Chat - ${new Date().toLocaleDateString()}`;
-
-      const content = messages.map(m => {
-        const label = m.role === "user" ? "<strong>You:</strong>" : `<strong>${agent.name}:</strong>`;
-        const htmlContent = markdownToHtml(m.content);
-        return `<p>${label}</p><p>${htmlContent}</p><hr/>`;
-      }).join("");
-
-      await supabase
-        .from("notes")
-        .insert({
-          user_id: user.id,
-          title,
-          content,
-          note_type: "document",
-          folder_id: folderId,
-          tags: [],
-        });
-    } catch (error) {
-      console.error("Failed to save chat to note:", error);
-    } finally {
-      setIsSavingChat(false);
-    }
   };
 
   if (!isOpen) return null;
@@ -630,7 +575,7 @@ export function ChatDrawer({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setShowHistoryModal(true)}
+              onClick={() => setViewMode(viewMode === 'chat' ? 'history' : 'chat')}
               className="h-8 w-8 p-0"
               title="Recent conversations"
             >
@@ -646,13 +591,6 @@ export function ChatDrawer({
                 <DropdownMenuItem onSelect={startNewConversation}>
                   <Plus className="w-4 h-4 mr-2" />
                   New Chat
-                </DropdownMenuItem>
-                <DropdownMenuItem 
-                  onSelect={() => saveChatToNote()}
-                  disabled={messages.length === 0 || isSavingChat}
-                >
-                  <FileText className="w-4 h-4 mr-2" />
-                  {isSavingChat ? "Saving..." : "Save Chat to Note"}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={() => setShowInstructionsModal(true)}>
@@ -696,204 +634,213 @@ export function ChatDrawer({
           </div>
         )}
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-[#8B9A8F]">
-              <MessageSquare className="w-12 h-12 mb-3 opacity-50" />
-              <p className="text-center">{agent.description}</p>
-              <p className="text-sm mt-2">Start a conversation...</p>
-            </div>
-          ) : (
-            messages.map((message) => (
-              <div
-                key={message.id}
-                className={cn(
-                  "flex flex-col mb-8",
-                  message.role === "user" ? "items-end" : "items-start"
-                )}
+        {viewMode === 'history' ? (
+          <>
+            {/* History View Header */}
+            <div className="px-4 py-3 border-b border-[#E8DCC4] flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setViewMode('chat')}
+                className="h-8 w-8 p-0"
               >
-                <div
-                  className={cn(
-                    "max-w-[85%] rounded-lg px-4 py-3 group relative",
-                    message.role === "user"
-                      ? "bg-[#E8DCC4] text-[#1E3D32]"
-                      : "bg-[#F5F0E6] text-[#1E3D32]"
-                  )}
-                >
-                  <div 
-                    className="text-sm prose prose-sm prose-stone max-w-none [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_code]:bg-stone-100 [&_code]:px-1 [&_code]:rounded"
-                    dangerouslySetInnerHTML={{ __html: markdownToHtml(message.content) }}
-                  />
-                  
-                  {message.role === "assistant" && (
-                    <div className="absolute -bottom-6 left-0 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => copyToClipboard(message.content, message.id)}
-                        className="h-6 px-2 text-xs text-[#8B9A8F]"
-                      >
-                        {copiedId === message.id ? <Check className="w-3 h-3 mr-1" /> : <Copy className="w-3 h-3 mr-1" />}
-                        Copy
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => saveMessageToNote(message.content, message.id)}
-                        disabled={savedToNoteIds.has(message.id)}
-                        className="h-6 px-2 text-xs text-[#8B9A8F]"
-                      >
-                        {savedToNoteIds.has(message.id) ? <Check className="w-3 h-3 mr-1" /> : <FileText className="w-3 h-3 mr-1" />}
-                        {savedToNoteIds.has(message.id) ? "Saved" : "Note"}
-                      </Button>
-                      {onInsertToNote && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => onInsertToNote(message.content)}
-                          className="h-6 px-2 text-xs text-[#8B9A8F]"
-                        >
-                          <ClipboardPaste className="w-3 h-3 mr-1" />
-                          Insert
-                        </Button>
+                <ArrowLeft className="w-4 h-4" />
+              </Button>
+              <span className="font-medium text-[#1E3D32]">{agent.name} History</span>
+            </div>
+
+            {/* History List */}
+            <div className="flex-1 overflow-y-auto p-4">
+              {conversations.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-[#8B9A8F]">
+                  <History className="w-12 h-12 mb-3 opacity-50" />
+                  <p className="text-center">No conversations yet</p>
+                  <p className="text-sm mt-2">Start a new chat to see it here</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {conversations.map((conv) => (
+                    <div
+                      key={conv.id}
+                      onClick={() => loadConversation(conv)}
+                      className={cn(
+                        "p-3 rounded-lg cursor-pointer group border transition-colors",
+                        conv.id === conversationId
+                          ? "bg-[#E8DCC4] border-[#D4C9B0]"
+                          : "bg-white border-[#E8DCC4] hover:bg-[#F5F0E6]"
+                      )}
+                    >
+                      {editingTitle === conv.id ? (
+                        <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                          <Input
+                            value={editTitleValue}
+                            onChange={(e) => setEditTitleValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") renameConversation(conv.id);
+                              if (e.key === "Escape") setEditingTitle(null);
+                            }}
+                            className="h-8 text-sm"
+                            autoFocus
+                          />
+                          <Button size="sm" onClick={() => renameConversation(conv.id)} className="h-8">
+                            Save
+                          </Button>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-sm font-medium text-[#1E3D32] line-clamp-1">
+                              {conv.title || "Untitled conversation"}
+                            </p>
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingTitle(conv.id);
+                                  setEditTitleValue(conv.title || "");
+                                }}
+                                className="h-6 w-6 p-0"
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => deleteConversation(conv.id, e)}
+                                className="h-6 w-6 p-0 text-red-500 hover:text-red-600"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </div>
+                          {conv.lastMessagePreview && (
+                            <p className="text-xs text-[#5C7A6B] mt-1 line-clamp-2">
+                              {conv.lastMessagePreview}
+                            </p>
+                          )}
+                          <p className="text-xs text-[#8B9A8F] mt-1.5">
+                            {formatDate(conv.last_message_at || conv.updated_at)}
+                          </p>
+                        </>
                       )}
                     </div>
-                  )}
+                  ))}
                 </div>
-              </div>
-            ))
-          )}
-          
-          {isLoading && (
-            <div className="flex items-start">
-              <div className="bg-[#F5F0E6] rounded-lg px-4 py-2">
-                <div className="flex gap-1">
-                  <span className="w-2 h-2 bg-[#8B9A8F] rounded-full animate-bounce" />
-                  <span className="w-2 h-2 bg-[#8B9A8F] rounded-full animate-bounce [animation-delay:0.1s]" />
-                  <span className="w-2 h-2 bg-[#8B9A8F] rounded-full animate-bounce [animation-delay:0.2s]" />
-                </div>
-              </div>
+              )}
             </div>
-          )}
-          
-          <div ref={messagesEndRef} />
-        </div>
 
-        {/* Input */}
-        <div className="p-4 border-t border-[#E8DCC4] bg-[#FAF8F5]">
-          <div className="flex gap-2">
-            <Textarea
-              ref={textareaRef}
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={`Message ${agent.name}...`}
-              className="min-h-[44px] max-h-32 resize-none bg-white border-[#E8DCC4] focus:border-[#2D5A47]"
-              rows={1}
-            />
-            <Button
-              type="button"
-              onClick={sendMessage}
-              disabled={!inputValue.trim() || isLoading}
-              className="bg-[#2D5A47] hover:bg-[#1E3D32] text-white h-11 w-11 p-0"
-            >
-              <Send className="w-4 h-4" />
-            </Button>
-          </div>
-          <p className="text-xs text-[#8B9A8F] mt-2 text-center">
-            ⌘/ to toggle • Shift+Enter for new line
-          </p>
-        </div>
-      </div>
-
-      {/* History Modal */}
-      <Dialog open={showHistoryModal} onOpenChange={setShowHistoryModal}>
-        <DialogContent className="max-w-md max-h-[70vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {agent.icon} {agent.name} Conversations
-            </DialogTitle>
-          </DialogHeader>
-          
-          <div className="flex-1 overflow-y-auto -mx-6 px-6">
-            {conversations.length === 0 ? (
-              <p className="text-center text-[#8B9A8F] py-8">
-                No conversations yet with {agent.name}
-              </p>
-            ) : (
-              <div className="space-y-1">
-                {conversations.map((conv) => (
+            {/* New Conversation Button */}
+            <div className="p-4 border-t border-[#E8DCC4] bg-[#FAF8F5]">
+              <Button onClick={startNewConversation} className="w-full bg-[#2D5A47] hover:bg-[#1E3D32]">
+                <Plus className="w-4 h-4 mr-2" />
+                New Conversation
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {messages.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-[#8B9A8F]">
+                  <MessageSquare className="w-12 h-12 mb-3 opacity-50" />
+                  <p className="text-center">{agent.description}</p>
+                  <p className="text-sm mt-2">Start a conversation...</p>
+                </div>
+              ) : (
+                messages.map((message) => (
                   <div
-                    key={conv.id}
-                    onClick={() => loadConversation(conv)}
+                    key={message.id}
                     className={cn(
-                      "px-3 py-3 rounded-lg cursor-pointer group",
-                      conv.id === conversationId ? "bg-[#E8DCC4]" : "hover:bg-[#F5F0E6]"
+                      "flex flex-col mb-8",
+                      message.role === "user" ? "items-end" : "items-start"
                     )}
                   >
-                    {editingTitle === conv.id ? (
-                      <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                        <Input
-                          value={editTitleValue}
-                          onChange={(e) => setEditTitleValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") renameConversation(conv.id);
-                            if (e.key === "Escape") setEditingTitle(null);
-                          }}
-                          className="h-8 text-sm"
-                          autoFocus
-                        />
-                        <Button size="sm" onClick={() => renameConversation(conv.id)} className="h-8">
-                          Save
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-[#1E3D32] truncate">
-                            {conv.title || "Untitled conversation"}
-                          </p>
-                          <p className="text-xs text-[#8B9A8F] mt-0.5">{formatDate(conv.created_at)}</p>
-                        </div>
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div
+                      className={cn(
+                        "max-w-[85%] rounded-lg px-4 py-3 group relative",
+                        message.role === "user"
+                          ? "bg-[#E8DCC4] text-[#1E3D32]"
+                          : "bg-[#F5F0E6] text-[#1E3D32]"
+                      )}
+                    >
+                      <div
+                        className="text-sm prose prose-sm prose-stone max-w-none [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_code]:bg-stone-100 [&_code]:px-1 [&_code]:rounded"
+                        dangerouslySetInnerHTML={{ __html: markdownToHtml(message.content) }}
+                      />
+
+                      {message.role === "assistant" && (
+                        <div className="absolute -bottom-6 left-0 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingTitle(conv.id);
-                              setEditTitleValue(conv.title || "");
-                            }}
-                            className="h-7 w-7 p-0"
+                            onClick={() => copyToClipboard(message.content, message.id)}
+                            className="h-6 px-2 text-xs text-[#8B9A8F]"
                           >
-                            <Pencil className="w-3 h-3" />
+                            {copiedId === message.id ? <Check className="w-3 h-3 mr-1" /> : <Copy className="w-3 h-3 mr-1" />}
+                            Copy
                           </Button>
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={(e) => deleteConversation(conv.id, e)}
-                            className="h-7 w-7 p-0 text-red-500 hover:text-red-600"
+                            onClick={() => handlePasteToNote(message.content, message.id)}
+                            className="h-6 px-2 text-xs text-[#8B9A8F]"
                           >
-                            <Trash2 className="w-3 h-3" />
+                            {pastedMessageIds.has(message.id) ? <Check className="w-3 h-3 mr-1" /> : <ClipboardPaste className="w-3 h-3 mr-1" />}
+                            {pastedMessageIds.has(message.id) ? "Pasted" : "Paste to Note"}
                           </Button>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
-                ))}
+                ))
+              )}
+
+              {isLoading && (
+                <div className="flex items-start">
+                  <div className="bg-[#F5F0E6] rounded-lg px-4 py-2">
+                    <div className="flex gap-1">
+                      <span className="w-2 h-2 bg-[#8B9A8F] rounded-full animate-bounce" />
+                      <span className="w-2 h-2 bg-[#8B9A8F] rounded-full animate-bounce [animation-delay:0.1s]" />
+                      <span className="w-2 h-2 bg-[#8B9A8F] rounded-full animate-bounce [animation-delay:0.2s]" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Input */}
+            <div className="p-4 border-t border-[#E8DCC4] bg-[#FAF8F5]">
+              <div className="flex gap-2">
+                <Textarea
+                  ref={textareaRef}
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={`Message ${agent.name}...`}
+                  className="min-h-[44px] max-h-32 resize-none bg-white border-[#E8DCC4] focus:border-[#2D5A47]"
+                  rows={1}
+                />
+                <Button
+                  type="button"
+                  onClick={sendMessage}
+                  disabled={!inputValue.trim() || isLoading}
+                  className="bg-[#2D5A47] hover:bg-[#1E3D32] text-white h-11 w-11 p-0"
+                >
+                  <Send className="w-4 h-4" />
+                </Button>
               </div>
-            )}
-          </div>
-          
-          <div className="pt-4 border-t">
-            <Button onClick={startNewConversation} className="w-full bg-[#2D5A47] hover:bg-[#1E3D32]">
-              <Plus className="w-4 h-4 mr-2" />
-              New Conversation
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+              <p className="text-xs text-[#8B9A8F] mt-2 text-center">
+                ⌘/ to toggle • Shift+Enter for new line
+              </p>
+            </div>
+          </>
+        )}
+      </div>
 
       {/* Agent Instructions Modal */}
       <Dialog open={showInstructionsModal} onOpenChange={setShowInstructionsModal}>

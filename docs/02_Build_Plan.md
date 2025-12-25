@@ -2,19 +2,34 @@
 
 **Version:** 1.0 (MVP)
 
-**Last Updated:** December 22, 2025
+**Last Updated:** December 25, 2025
 
 ## Final Stretch
 
+12/23 - DONE! 
 1. AI-agent context infra: full context integration for ai-chat drawer (per agent), clear context pathways for pattern analyzer workflows in UI
 2. AI-meeting widget build out: STT - Notion-like experience. (worth it also piloting live voice mode? Deepgram has this)
 3. Dashboard copy clean up
 4. Notebook folders rest of build out - kanban/table/graph views via toggle with filter/sort/group and multi view enabled when click notebook folder name -> navigate to pages from that view a la Notion
+5. Template creater in each notebook folder (e.g., all notes created in this folder use this template OR meeting notes created in this folder use this template) with ability to schedule generation of new pages from a template (a la Notion)
 4. QA and get all api integrations working
-5. iOS journal shortcut and full working workflow on phone web and desktop web
-6. iOS snippet capture shortcut
-7. Security review - RLS, e2ee, MFA and read.me creation
 
+12/24
+DONE - Finish up growth cards dashboard - pattern analyzer AI agent, score, trending over time, interaction
+DONE - Fix journal entry feed - dates not working properly, text not clearing, today not showing today (showing tomorrow) 
+DONE - Import/export into notebook
+DONE - Electron wrapper 
+DONE - Gcal add travel time automatically
+
+Pending
+iOS journal shortcut and full working workflow on phone web and desktop web
+iOS snippet capture shortcut and full working workflow on phone web and desktop web
+iOS shortcut voice to gcal event creation/edit/deletion
+Security review - RLS, e2ee, MFA, file backup (Supabase glitches/issues - back up?) and read.me creation
+Agents (cron jobs and chat based workflows)
+- Daily brief: gmail clean up + labeling + auto-filtering system - identify all newsletters I am signed up for + ideation on good RSs feeds to include (healthcare earnings calls, CMS, CMMI, etc?) -> bundle/summarize cron job build out 
+- Personal life executive function automation
+- Writing coaching
 
 
 

@@ -180,27 +180,13 @@ export function CompassSection({
                 )}
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <p className="text-sm text-[#8B9A8F] italic">
-                  Your daily AI insight analyzes your patterns across sleep, tasks, and journal entries to provide personalized guidance.
+                  Your daily insight will be generated automatically each morning at 3 AM.
                 </p>
-                <button
-                  onClick={generateInsight}
-                  disabled={isGenerating}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#D4A84B]/10 text-[#D4A84B] text-sm font-medium hover:bg-[#D4A84B]/20 transition-colors"
-                >
-                  {isGenerating ? (
-                    <>
-                      <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="h-4 w-4" />
-                      Generate Today's Insight
-                    </>
-                  )}
-                </button>
+                <p className="text-xs text-[#8B9A8F]">
+                  Check back after your morning routine for personalized guidance based on your sleep, tasks, and journal patterns.
+                </p>
               </div>
             )}
 

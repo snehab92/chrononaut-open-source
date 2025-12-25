@@ -197,7 +197,7 @@ async function syncWorkouts(
       const date = startedAt.toISOString().split('T')[0];
 
       const activityType = SPORT_NAMES[sportId] || 'Other';
-      const isMeditation = workout.sport_id === 82;
+      const isMeditation = workout.sport_id === 70; // Meditation is sport_id 70
 
       // Convert zone durations from ms to minutes
       // v2 API uses "zone_durations" (plural), not "zone_duration"

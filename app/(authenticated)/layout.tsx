@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/app-shell";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { ChatProvider } from "@/components/chat/chat-provider";
+import { NoteEditorProvider } from "@/components/notes/note-editor-context";
+import { QuickTaskProvider } from "@/components/shared/quick-task-dialog";
 
 export default async function AuthenticatedLayout({
   children,
@@ -26,11 +28,15 @@ export default async function AuthenticatedLayout({
     .single();
 
   return (
-    <ChatProvider>
-      <AppShell user={{ full_name: profile?.full_name || "", email: user.email || "" }}>
-        <KeyboardShortcuts />
-        {children}
-      </AppShell>
-    </ChatProvider>
+    <NoteEditorProvider>
+      <ChatProvider>
+        <QuickTaskProvider>
+          <AppShell user={{ full_name: profile?.full_name || "", email: user.email || "" }}>
+            <KeyboardShortcuts />
+            {children}
+          </AppShell>
+        </QuickTaskProvider>
+      </ChatProvider>
+    </NoteEditorProvider>
   );
 }

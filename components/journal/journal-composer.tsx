@@ -12,7 +12,6 @@ import {
   Loader2,
   X,
   ChevronDown,
-  Tag,
   Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -42,20 +41,25 @@ import {
   verifyPassphrase,
 } from "@/lib/journal/encryption";
 import { parseExifFromFile, reverseGeocode, ExifData } from "@/lib/journal/exif-parser";
+import { LabelMultiSelect } from "@/components/shared/label-multi-select";
 
+// Mood options grouped by cluster with unified background colors
 const MOOD_OPTIONS = [
-  { value: "Calm", emoji: "😌", color: "bg-green-100 text-green-800" },
-  { value: "Creative", emoji: "✨", color: "bg-purple-100 text-purple-800" },
-  { value: "Adventurous", emoji: "🚀", color: "bg-blue-100 text-blue-800" },
-  { value: "Socially Connected", emoji: "💛", color: "bg-yellow-100 text-yellow-800" },
-  { value: "Acceptance", emoji: "🙏", color: "bg-teal-100 text-teal-800" },
-  { value: "Romantic", emoji: "💕", color: "bg-pink-100 text-pink-800" },
-  { value: "Stressed", emoji: "😰", color: "bg-orange-100 text-orange-800" },
-  { value: "Unfocused", emoji: "🌀", color: "bg-gray-100 text-gray-800" },
-  { value: "Threatened", emoji: "😨", color: "bg-red-100 text-red-800" },
-  { value: "Rejected", emoji: "😔", color: "bg-indigo-100 text-indigo-800" },
-  { value: "Angry", emoji: "😤", color: "bg-red-100 text-red-800" },
-  { value: "Manic", emoji: "⚡", color: "bg-amber-100 text-amber-800" },
+  // Positive moods - light airy green background
+  { value: "Creative", emoji: "✨", color: "bg-[#E8F2EB] text-[#4B7B5A]" },
+  { value: "Adventurous", emoji: "🤩", color: "bg-[#E8F2EB] text-[#4B7B5A]" },
+  { value: "Socially Connected", emoji: "🥰", color: "bg-[#E8F2EB] text-[#4B7B5A]" },
+  { value: "Romantic", emoji: "💕", color: "bg-[#E8F2EB] text-[#4B7B5A]" },
+  { value: "Manic", emoji: "🤪", color: "bg-[#E8F2EB] text-[#4B7B5A]" },
+  // Neutral/Calm moods - soft golden/yellow background
+  { value: "Calm", emoji: "😌", color: "bg-[#FDF6E3] text-[#8B7B4B]" },
+  { value: "Content", emoji: "😊", color: "bg-[#FDF6E3] text-[#8B7B4B]" },
+  // Negative moods - soft pink/rose background
+  { value: "Stressed", emoji: "😣", color: "bg-[#F8E8E8] text-[#8B5A5A]" },
+  { value: "Unfocused", emoji: "😶‍🌫️", color: "bg-[#F8E8E8] text-[#8B5A5A]" },
+  { value: "Threatened", emoji: "😰", color: "bg-[#F8E8E8] text-[#8B5A5A]" },
+  { value: "Rejected", emoji: "😢", color: "bg-[#F8E8E8] text-[#8B5A5A]" },
+  { value: "Angry", emoji: "😠", color: "bg-[#F8E8E8] text-[#8B5A5A]" },
 ];
 
 interface JournalEntry {
@@ -94,7 +98,6 @@ export function JournalComposer({ date, onSaved }: JournalComposerProps) {
   const [locationLng, setLocationLng] = useState<number | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [tags, setTags] = useState<string[]>([]);
-  const [tagInput, setTagInput] = useState("");
   const [moodLabel, setMoodLabel] = useState<string | null>(null);
   const [moodOverride, setMoodOverride] = useState(false);
   const [energyRating, setEnergyRating] = useState<number | null>(null);
@@ -109,10 +112,8 @@ export function JournalComposer({ date, onSaved }: JournalComposerProps) {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
-  // Tag suggestions from previous entries + current session
+  // Tag suggestions from previous entries
   const [allTags, setAllTags] = useState<string[]>([]);
-  const [sessionTags, setSessionTags] = useState<string[]>([]); // Tags used this session
-  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
 
   // Encryption state
   const [isEncrypted, setIsEncrypted] = useState(false);
@@ -192,8 +193,20 @@ export function JournalComposer({ date, onSaved }: JournalComposerProps) {
           }
         }
       } else {
-        // New entry
+        // New entry - reset ALL fields
         setEntry({ entry_date: date });
+        setHappened("");
+        setFeelings("");
+        setGrateful("");
+        setLocationName("");
+        setLocationLat(null);
+        setLocationLng(null);
+        setPhotoUrl(null);
+        setTags([]);
+        setMoodLabel(null);
+        setMoodOverride(false);
+        setEnergyRating(null);
+        setEnergyOverride(false);
         setIsEncrypted(false);
       }
     } catch (error) {
@@ -401,24 +414,6 @@ export function JournalComposer({ date, onSaved }: JournalComposerProps) {
     }
   };
 
-  // Add tag
-  const addTag = (tagToAdd?: string) => {
-    const tag = (tagToAdd || tagInput).trim().toLowerCase();
-    if (tag && !tags.includes(tag)) {
-      setTags([...tags, tag]);
-      // Track in session tags for suggestions
-      if (!sessionTags.includes(tag)) {
-        setSessionTags([...sessionTags, tag]);
-      }
-    }
-    setTagInput("");
-  };
-
-  // Remove tag
-  const removeTag = (tag: string) => {
-    setTags(tags.filter((t) => t !== tag));
-  };
-
   // Get current location
   const getCurrentLocation = () => {
     if (!navigator.geolocation) return;
@@ -620,98 +615,21 @@ export function JournalComposer({ date, onSaved }: JournalComposerProps) {
       {/* Tags */}
       <div className="mb-6">
         <label className="block text-sm font-medium text-[#1E3D32] mb-2">
-          Tags
+          Labels
         </label>
-        <div className="flex flex-wrap gap-2 mb-2">
-          {tags.map((tag) => (
-            <Badge
-              key={tag}
-              variant="secondary"
-              className="cursor-pointer hover:bg-red-100"
-              onClick={() => removeTag(tag)}
-            >
-              {tag}
-              <X className="w-3 h-3 ml-1" />
-            </Badge>
-          ))}
-        </div>
-        <div className="relative">
-          <div className="flex gap-2">
-            <Input
-              value={tagInput}
-              onChange={(e) => {
-                setTagInput(e.target.value);
-                setShowTagSuggestions(true);
-              }}
-              onFocus={() => setShowTagSuggestions(true)}
-              onBlur={() => setTimeout(() => setShowTagSuggestions(false), 200)}
-              placeholder="Add tag..."
-              className="flex-1"
-              onKeyDown={(e) => e.key === "Enter" && addTag()}
-            />
-            <Button variant="outline" onClick={() => addTag()}>
-              <Tag className="w-4 h-4" />
-            </Button>
-          </div>
-          {/* Tag suggestions dropdown */}
-          {showTagSuggestions && (allTags.length > 0 || sessionTags.length > 0) && (
-            <div className="absolute top-full left-0 right-12 mt-1 bg-white border border-[#E8DCC4] rounded-lg shadow-lg z-10 max-h-40 overflow-y-auto">
-              {/* Combine database tags and session tags, dedupe */}
-              {Array.from(new Set([...allTags, ...sessionTags]))
-                .sort()
-                .filter(
-                  (t) =>
-                    !tags.includes(t) &&
-                    (tagInput === "" || t.includes(tagInput.toLowerCase()))
-                )
-                .slice(0, 8)
-                .map((tag) => (
-                  <button
-                    key={tag}
-                    type="button"
-                    className="w-full px-3 py-2 text-left text-sm hover:bg-[#F5F0E6] transition-colors"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      addTag(tag);
-                      setShowTagSuggestions(false);
-                    }}
-                  >
-                    {tag}
-                  </button>
-                ))}
-              {Array.from(new Set([...allTags, ...sessionTags])).filter(
-                (t) =>
-                  !tags.includes(t) &&
-                  (tagInput === "" || t.includes(tagInput.toLowerCase()))
-              ).length === 0 && (
-                <p className="px-3 py-2 text-sm text-[#8B9A8F]">
-                  {tagInput ? "No matching tags" : "No previous tags"}
-                </p>
-              )}
-            </div>
-          )}
-        </div>
+        <LabelMultiSelect
+          selectedLabels={tags}
+          allLabels={allTags}
+          onLabelsChange={setTags}
+          placeholder="Add labels..."
+        />
       </div>
 
-      {/* AI Inference Section */}
+      {/* Mood Section */}
       <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-4 mb-6">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-purple-600" />
-            <h3 className="font-medium text-[#1E3D32]">AI Insights</h3>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={getAiInference}
-            disabled={isInferring || (!happened && !feelings && !grateful)}
-          >
-            {isInferring ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              "Get Insights"
-            )}
-          </Button>
+        <div className="flex items-center gap-2 mb-3">
+          <Sparkles className="w-5 h-5 text-purple-600" />
+          <h3 className="font-medium text-[#1E3D32]">Mood</h3>
         </div>
 
         <div className="grid grid-cols-2 gap-4">

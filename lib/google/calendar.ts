@@ -48,6 +48,13 @@ export interface CalendarEvent {
     }>;
   };
   updated?: string;
+  // Event type: 'default' for regular events, 'fromGmail' for auto-created events (flights, hotels, etc.)
+  eventType?: 'default' | 'fromGmail' | 'birthday' | 'focusTime' | 'outOfOffice' | 'workingLocation';
+  // Source info for fromGmail events
+  source?: {
+    title?: string;
+    url?: string;
+  };
 }
 
 /**
@@ -154,11 +161,16 @@ export class GoogleCalendarClient {
     return new GoogleCalendarClient(tokens.access_token, tokens.refresh_token);
   }
 
-  private async request<T>(endpoint: string, params?: Record<string, string>): Promise<T> {
+  private async request<T>(endpoint: string, params?: Record<string, string | string[]>): Promise<T> {
     const url = new URL(`${CALENDAR_API_URL}${endpoint}`);
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
-        url.searchParams.set(key, value);
+        if (Array.isArray(value)) {
+          // For array params like eventTypes, append each value separately
+          value.forEach(v => url.searchParams.append(key, v));
+        } else {
+          url.searchParams.set(key, value);
+        }
       });
     }
 
@@ -197,12 +209,15 @@ export class GoogleCalendarClient {
     const defaultTimeMax = new Date(timeMin);
     defaultTimeMax.setDate(defaultTimeMax.getDate() + 30);
 
-    const params: Record<string, string> = {
+    const params: Record<string, string | string[]> = {
       timeMin: timeMin.toISOString(),
       timeMax: (timeMax || defaultTimeMax).toISOString(),
       maxResults: maxResults.toString(),
       singleEvents: 'true', // Expand recurring events
       orderBy: 'startTime',
+      // Include both regular events AND Gmail-generated events (flights, hotels, reservations)
+      // Required since May 2024 when Google separated these event types
+      eventTypes: ['default', 'fromGmail'],
     };
 
     const response = await this.request<{ items: CalendarEvent[] }>(
@@ -220,6 +235,80 @@ export class GoogleCalendarClient {
     return this.request<CalendarEvent>(
       `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`
     );
+  }
+
+  /**
+   * Get list of all calendars the user has access to
+   */
+  async getCalendarList(): Promise<Array<{ id: string; summary: string; primary?: boolean; selected?: boolean; accessRole?: string }>> {
+    try {
+      const response = await this.request<{ items: Array<{ id: string; summary: string; primary?: boolean; selected?: boolean; accessRole?: string }> }>(
+        '/users/me/calendarList',
+        { maxResults: '250', showHidden: 'true' } // Include hidden calendars for reservations, etc.
+      );
+
+      // Log ALL calendars returned by API for debugging
+      console.log(`Google API returned ${(response.items || []).length} calendars:`);
+      (response.items || []).forEach(cal => {
+        console.log(`  - "${cal.summary}" | role: ${cal.accessRole} | primary: ${cal.primary} | selected: ${cal.selected}`);
+      });
+
+      // Return all calendars where user has read access (owner, writer, reader)
+      // This includes hidden calendars that may contain auto-created events from email (reservations, etc.)
+      const calendars = (response.items || []).filter(cal =>
+        cal.accessRole === 'owner' || cal.accessRole === 'writer' || cal.accessRole === 'reader'
+      );
+      console.log(`Using ${calendars.length} calendars with read access`);
+      return calendars;
+    } catch (error) {
+      console.error('Failed to fetch calendar list:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get events from all selected calendars
+   */
+  async getAllCalendarEvents(options: {
+    timeMin?: Date;
+    timeMax?: Date;
+    maxResults?: number;
+  } = {}): Promise<CalendarEvent[]> {
+    const calendars = await this.getCalendarList();
+    const allEvents: CalendarEvent[] = [];
+
+    console.log(`Fetching events from ${calendars.length} calendars (timeMin: ${options.timeMin?.toISOString()}, timeMax: ${options.timeMax?.toISOString()}):`);
+
+    for (const calendar of calendars) {
+      try {
+        const events = await this.getEvents({
+          ...options,
+          calendarId: calendar.id,
+        });
+        console.log(`  📅 ${calendar.summary} (${calendar.id}): ${events.length} events`);
+        if (events.length > 0) {
+          events.forEach(e => {
+            const start = e.start.dateTime || e.start.date;
+            console.log(`      - "${e.summary}" @ ${start}`);
+          });
+        }
+        allEvents.push(...events);
+      } catch (error) {
+        console.warn(`  ❌ Failed to fetch from ${calendar.summary} (${calendar.id}):`, error);
+        // Continue with other calendars
+      }
+    }
+
+    console.log(`Total events fetched: ${allEvents.length}`);
+
+    // Sort by start time
+    allEvents.sort((a, b) => {
+      const aTime = a.start.dateTime || a.start.date || '';
+      const bTime = b.start.dateTime || b.start.date || '';
+      return aTime.localeCompare(bTime);
+    });
+
+    return allEvents;
   }
 
   /**
