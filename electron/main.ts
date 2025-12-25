@@ -21,7 +21,7 @@ const isDev = !app.isPackaged;
 // App URL - uses Vercel deployment in production, localhost in dev
 const APP_URL = isDev
   ? 'http://localhost:3000'
-  : 'https://chrononaut.vercel.app';
+  : 'https://chrononaut-psi.vercel.app';
 
 function createWindow(): void {
   const windowState = loadWindowState();
