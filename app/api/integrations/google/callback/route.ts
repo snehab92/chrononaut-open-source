@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { exchangeCodeForTokens, GoogleCalendarClient } from "@/lib/google/calendar";
 import { pullEventsFromGoogle } from "@/lib/google/sync";
 import { NextRequest, NextResponse } from "next/server";
+import { storeIntegrationToken } from "@/lib/integrations/get-token";
 
 /**
  * GET /api/integrations/google/callback
@@ -40,26 +41,25 @@ export async function GET(request: NextRequest) {
     // Exchange code for tokens
     const tokens = await exchangeCodeForTokens(code, redirectUri);
 
-    console.log('Google OAuth successful, storing tokens...');
+    console.log('Google OAuth successful, storing encrypted tokens...');
 
-    // Store tokens in database
-    const { error: dbError } = await supabase
-      .from('integration_tokens')
-      .upsert({
-        user_id: user.id,
-        provider: 'google_calendar',
-        encrypted_access_token: tokens.access_token,
-        encrypted_refresh_token: tokens.refresh_token || null,
+    // Store tokens with E2EE encryption
+    const storeResult = await storeIntegrationToken(
+      user.id,
+      'google_calendar',
+      {
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token || null,
+      },
+      {
         token_type: 'oauth',
         scopes: ['calendar.readonly'],
         expires_at: tokens.expires_at ? new Date(tokens.expires_at).toISOString() : null,
-        updated_at: new Date().toISOString(),
-      }, {
-        onConflict: 'user_id,provider',
-      });
+      }
+    );
 
-    if (dbError) {
-      console.error('Failed to store Google tokens:', dbError);
+    if (!storeResult.success) {
+      console.error('Failed to store Google tokens:', storeResult.error);
       return NextResponse.redirect(
         new URL('/settings?error=token_storage_failed', process.env.NEXT_PUBLIC_SITE_URL!)
       );

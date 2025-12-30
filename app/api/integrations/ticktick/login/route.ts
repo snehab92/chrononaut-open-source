@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { TickTickClient } from '@/lib/ticktick/client';
 import { pullTasksFromTickTick } from '@/lib/ticktick/sync';
+import { storeIntegrationToken } from '@/lib/integrations/get-token';
 
 /**
  * Direct login endpoint for TickTick
@@ -38,27 +39,26 @@ export async function POST(request: NextRequest) {
     // Attempt login
     const { client, token, inboxId } = await TickTickClient.login(username, password);
 
-    console.log('TickTick login successful, storing token...');
+    console.log('TickTick login successful, storing encrypted token...');
 
-    // Store token in database (NOT the password - just the session token)
-    // TODO: Add encryption before production
-    const { error: dbError } = await supabase
-      .from('integration_tokens')
-      .upsert({
-        user_id: user.id,
-        provider: 'ticktick',
-        encrypted_access_token: token,
-        encrypted_refresh_token: inboxId, // Store inboxId here for now
+    // Store token in database with E2EE encryption (NOT the password - just the session token)
+    // ✅ SECURITY FIX: Tokens now encrypted with master key before storage
+    const storeResult = await storeIntegrationToken(
+      user.id,
+      'ticktick',
+      {
+        access_token: token,
+        refresh_token: inboxId, // Store inboxId as refresh_token
+      },
+      {
         token_type: 'session',
         scopes: ['tasks:read', 'tasks:write'],
         expires_at: null, // Session tokens don't have fixed expiry
-        updated_at: new Date().toISOString(),
-      }, {
-        onConflict: 'user_id,provider',
-      });
+      }
+    );
 
-    if (dbError) {
-      console.error('Failed to store token:', dbError);
+    if (!storeResult.success) {
+      console.error('Failed to store encrypted token:', storeResult.error);
       return NextResponse.json(
         { error: 'Failed to store authentication' },
         { status: 500 }

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { TickTickClient } from "@/lib/ticktick/client";
 import { syncTasks, pullTasksFromTickTick, TriggerType } from "@/lib/ticktick/sync";
 import { NextRequest, NextResponse } from "next/server";
+import { getIntegrationToken } from "@/lib/integrations/get-token";
 
 /**
  * POST /api/integrations/ticktick/sync
@@ -29,13 +30,8 @@ export async function POST(request: NextRequest) {
   const direction = request.nextUrl.searchParams.get('direction') || 'both';
   const trigger = (request.nextUrl.searchParams.get('trigger') || 'manual') as TriggerType;
 
-  // Get TickTick token
-  const { data: tokenData } = await supabase
-    .from("integration_tokens")
-    .select("encrypted_access_token, encrypted_refresh_token")
-    .eq("user_id", user.id)
-    .eq("provider", "ticktick")
-    .single();
+  // Get and decrypt TickTick token
+  const tokenData = await getIntegrationToken(user.id, "ticktick");
 
   if (!tokenData) {
     return NextResponse.json(
@@ -45,9 +41,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    // Use decrypted tokens
     const client = TickTickClient.fromToken(
-      tokenData.encrypted_access_token,
-      tokenData.encrypted_refresh_token
+      tokenData.access_token,
+      tokenData.refresh_token || ""
     );
 
     let result;

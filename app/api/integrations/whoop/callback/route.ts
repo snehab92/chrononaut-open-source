@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { exchangeCodeForTokens, WhoopClient } from "@/lib/whoop/client";
 import { syncWhoopData } from "@/lib/whoop/sync";
 import { NextRequest, NextResponse } from "next/server";
+import { storeIntegrationToken } from "@/lib/integrations/get-token";
 
 /**
  * GET /api/integrations/whoop/callback
@@ -40,26 +41,25 @@ export async function GET(request: NextRequest) {
     // Exchange code for tokens
     const tokens = await exchangeCodeForTokens(code, redirectUri);
 
-    console.log('Whoop OAuth successful, storing tokens...');
+    console.log('Whoop OAuth successful, storing encrypted tokens...');
 
-    // Store tokens in database
-    const { error: dbError } = await supabase
-      .from('integration_tokens')
-      .upsert({
-        user_id: user.id,
-        provider: 'whoop',
-        encrypted_access_token: tokens.access_token,
-        encrypted_refresh_token: tokens.refresh_token,
+    // Store tokens with E2EE encryption
+    const storeResult = await storeIntegrationToken(
+      user.id,
+      'whoop',
+      {
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+      },
+      {
         token_type: 'oauth',
         scopes: ['read:recovery', 'read:cycles', 'read:sleep', 'read:workout', 'read:profile'],
         expires_at: new Date(tokens.expires_at).toISOString(),
-        updated_at: new Date().toISOString(),
-      }, {
-        onConflict: 'user_id,provider',
-      });
+      }
+    );
 
-    if (dbError) {
-      console.error('Failed to store Whoop tokens:', dbError);
+    if (!storeResult.success) {
+      console.error('Failed to store Whoop tokens:', storeResult.error);
       return NextResponse.redirect(
         new URL('/settings?error=token_storage_failed', process.env.NEXT_PUBLIC_SITE_URL!)
       );
