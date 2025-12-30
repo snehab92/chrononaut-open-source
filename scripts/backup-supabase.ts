@@ -145,7 +145,7 @@ const getSchemaVersion = async (supabase: ReturnType<typeof createClient>): Prom
       return 'unknown';
     }
 
-    return data[0].version;
+    return (data[0] as { version: string }).version;
   } catch (err) {
     return 'unknown';
   }
