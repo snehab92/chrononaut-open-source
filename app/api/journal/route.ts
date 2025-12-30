@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { encryptJournalEntry, decryptJournalEntry } from "@/lib/journal/encryption-v2";
 
 // GET - List journal entries or get single entry by date
 export async function GET(request: NextRequest) {
@@ -29,7 +30,22 @@ export async function GET(request: NextRequest) {
         throw error;
       }
 
-      return NextResponse.json({ entry: data || null });
+      if (!data) {
+        return NextResponse.json({ entry: null });
+      }
+
+      // Decrypt encrypted fields before returning (v2 master key encryption)
+      const decrypted = await decryptJournalEntry(data);
+
+      return NextResponse.json({
+        entry: {
+          ...data,
+          happened: decrypted.happened,
+          feelings: decrypted.feelings,
+          grateful: decrypted.grateful,
+          ai_insights: decrypted.ai_insights,
+        },
+      });
     }
 
     // List entries
@@ -42,7 +58,21 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    return NextResponse.json({ entries: data, total: count });
+    // Decrypt all entries before returning
+    const decryptedEntries = await Promise.all(
+      (data || []).map(async (entry) => {
+        const decrypted = await decryptJournalEntry(entry);
+        return {
+          ...entry,
+          happened: decrypted.happened,
+          feelings: decrypted.feelings,
+          grateful: decrypted.grateful,
+          ai_insights: decrypted.ai_insights,
+        };
+      })
+    );
+
+    return NextResponse.json({ entries: decryptedEntries, total: count });
   } catch (error) {
     console.error("Journal GET error:", error);
     return NextResponse.json(
@@ -65,6 +95,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const {
       entry_date,
+      // Accept plaintext fields (v2 - server-side encryption)
+      happened,
+      feelings,
+      grateful,
+      ai_insights,
+      // Also accept old encrypted fields for backward compatibility
       encrypted_happened,
       encrypted_feelings,
       encrypted_grateful,
@@ -87,6 +123,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Encrypt plaintext fields server-side (v2 - master key encryption)
+    // If old encrypted fields are provided, use them (backward compatibility)
+    let encryptedFields;
+    if (happened || feelings || grateful || ai_insights) {
+      // New v2 API: encrypt server-side
+      encryptedFields = await encryptJournalEntry({
+        happened,
+        feelings,
+        grateful,
+        ai_insights,
+      });
+    } else {
+      // Old v1 API: already encrypted client-side
+      encryptedFields = {
+        encrypted_happened,
+        encrypted_feelings,
+        encrypted_grateful,
+        encrypted_ai_insights,
+        encryption_version: 1,
+      };
+    }
+
     // Upsert entry (one per day per user)
     const { data, error } = await supabase
       .from("journal_entries")
@@ -94,10 +152,11 @@ export async function POST(request: NextRequest) {
         {
           user_id: user.id,
           entry_date,
-          encrypted_happened,
-          encrypted_feelings,
-          encrypted_grateful,
-          encrypted_ai_insights,
+          encrypted_happened: encryptedFields.encrypted_happened,
+          encrypted_feelings: encryptedFields.encrypted_feelings,
+          encrypted_grateful: encryptedFields.encrypted_grateful,
+          encrypted_ai_insights: encryptedFields.encrypted_ai_insights,
+          encryption_version: encryptedFields.encryption_version,
           location_name,
           location_lat,
           location_lng,
@@ -118,7 +177,18 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error;
 
-    return NextResponse.json({ entry: data });
+    // Decrypt before returning to client
+    const decrypted = await decryptJournalEntry(data);
+
+    return NextResponse.json({
+      entry: {
+        ...data,
+        happened: decrypted.happened,
+        feelings: decrypted.feelings,
+        grateful: decrypted.grateful,
+        ai_insights: decrypted.ai_insights,
+      },
+    });
   } catch (error) {
     console.error("Journal POST error:", error);
     return NextResponse.json(

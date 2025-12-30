@@ -3,38 +3,43 @@
 import { useEffect, useCallback, useRef } from "react";
 import { useTickTickSync } from "@/lib/hooks/use-ticktick-sync";
 import { useGoogleCalendarSync } from "@/lib/hooks/use-google-calendar-sync";
+import { useWhoopSync } from "@/lib/hooks/use-whoop-sync";
 import { useTaskContext } from "./task-context";
 import { useCalendarContext } from "./calendar-context";
 import { RefreshCw } from "lucide-react";
 
 /**
- * CombinedSyncStatus - Handles sync for both TickTick and Google Calendar
- * 
- * - 60-second polling for both
+ * CombinedSyncStatus - Handles sync for TickTick, Google Calendar, and Whoop
+ *
+ * - 60-second polling for TickTick and Google Calendar
+ * - Manual sync for Whoop
  * - Sync on page focus
  * - Sync on mount
  */
 export function CombinedSyncStatus() {
   const ticktick = useTickTickSync();
   const gcal = useGoogleCalendarSync();
-  
+  const whoop = useWhoopSync();
+
   const { refreshTasks } = useTaskContext();
   const { refreshEvents } = useCalendarContext();
-  
+
   const initialSyncDone = useRef(false);
 
   // Combined sync function
-  // forceTickTick and forceGcal allow bypassing state check when connection was just verified
+  // forceTickTick, forceGcal, and forceWhoop allow bypassing state check when connection was just verified
   const syncAll = useCallback(async (
     trigger: string = "manual",
-    options?: { forceTickTick?: boolean; forceGcal?: boolean }
+    options?: { forceTickTick?: boolean; forceGcal?: boolean; forceWhoop?: boolean }
   ) => {
     const shouldSyncTickTick = options?.forceTickTick || ticktick.isConnected;
     const shouldSyncGcal = options?.forceGcal || gcal.isConnected;
+    const shouldSyncWhoop = options?.forceWhoop || whoop.isConnected;
 
     const results = await Promise.allSettled([
       shouldSyncTickTick ? ticktick.manualSync() : Promise.resolve(null),
       shouldSyncGcal ? gcal.manualSync(trigger) : Promise.resolve(null),
+      shouldSyncWhoop ? whoop.manualSync() : Promise.resolve(null),
     ]);
 
     // Refresh data after sync
@@ -44,37 +49,39 @@ export function CombinedSyncStatus() {
     ]);
 
     return results;
-  }, [ticktick, gcal, refreshTasks, refreshEvents]);
+  }, [ticktick, gcal, whoop, refreshTasks, refreshEvents]);
 
   // Initial connection check and sync on mount
   useEffect(() => {
     if (initialSyncDone.current) return;
-    
+
     const initSync = async () => {
       initialSyncDone.current = true;
-      
+
       // Check connections
-      const [ticktickConnected, gcalConnected] = await Promise.all([
+      const [ticktickConnected, gcalConnected, whoopConnected] = await Promise.all([
         ticktick.checkConnection(),
         gcal.checkConnection(),
+        whoop.checkConnection(),
       ]);
 
       // Small delay for page render, then sync
       // Pass force options to bypass state check since we just verified connection
       setTimeout(async () => {
-        if (ticktickConnected || gcalConnected) {
+        if (ticktickConnected || gcalConnected || whoopConnected) {
           await syncAll("initial", {
             forceTickTick: ticktickConnected,
             forceGcal: gcalConnected,
+            forceWhoop: whoopConnected,
           });
         }
       }, 500);
     };
-    
-    initSync();
-  }, [ticktick.checkConnection, gcal.checkConnection, syncAll]);
 
-  // 60-second polling
+    initSync();
+  }, [ticktick.checkConnection, gcal.checkConnection, whoop.checkConnection, syncAll]);
+
+  // 60-second polling (TickTick and Google Calendar only - Whoop is manual only)
   useEffect(() => {
     const hasConnections = ticktick.isConnected || gcal.isConnected;
     if (!hasConnections) return;
@@ -91,7 +98,7 @@ export function CombinedSyncStatus() {
   useEffect(() => {
     const handleVisibilityChange = async () => {
       if (document.visibilityState === "visible") {
-        const hasConnections = ticktick.isConnected || gcal.isConnected;
+        const hasConnections = ticktick.isConnected || gcal.isConnected || whoop.isConnected;
         if (hasConnections) {
           console.log("Page focused - triggering sync");
           await syncAll("page_focus");
@@ -101,12 +108,15 @@ export function CombinedSyncStatus() {
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [ticktick.isConnected, gcal.isConnected, syncAll]);
+  }, [ticktick.isConnected, gcal.isConnected, whoop.isConnected, syncAll]);
 
   // Determine overall sync state
-  const isSyncing = ticktick.isSyncing || gcal.isSyncing;
-  const lastSyncedAt = getLatestDate(ticktick.lastSyncedAt, gcal.lastSyncedAt);
-  const hasAnyConnection = ticktick.isConnected || gcal.isConnected;
+  const isSyncing = ticktick.isSyncing || gcal.isSyncing || whoop.isSyncing;
+  const lastSyncedAt = getLatestDate(
+    getLatestDate(ticktick.lastSyncedAt, gcal.lastSyncedAt),
+    whoop.lastSyncedAt
+  );
+  const hasAnyConnection = ticktick.isConnected || gcal.isConnected || whoop.isConnected;
 
   if (!hasAnyConnection) return null;
 
