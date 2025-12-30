@@ -123,10 +123,10 @@ export function ChatDrawer({
     if (defaultAgentOverride) return defaultAgentOverride;
     const contextMapping: Record<string, AgentType> = {
       dashboard: "research-assistant",
-      notes: "executive-coach",
+      notes: "research-assistant",
       focus: "executive-coach",
       meeting: "executive-coach",
-      journal: "executive-coach",
+      journal: "therapist",
       general: "research-assistant",
     };
     return contextMapping[contextType] || "executive-coach";
@@ -559,13 +559,16 @@ export function ChatDrawer({
               </SelectTrigger>
               <SelectContent>
                 {Object.values(AGENTS)
-                  .filter(a => a.id !== "pattern-analyst" && a.id !== "therapist")
+                  .filter(a => {
+                    // Always hide pattern-analyst (background agent)
+                    if (a.id === "pattern-analyst") return false;
+                    // Only show therapist in journal screen
+                    if (a.id === "therapist") return contextType === "journal";
+                    return true;
+                  })
                   .map((a) => (
                     <SelectItem key={a.id} value={a.id}>
-                      <span className="flex items-center gap-2">
-                        <span>{a.icon}</span>
-                        {a.name}
-                      </span>
+                      {a.name}
                     </SelectItem>
                   ))}
               </SelectContent>

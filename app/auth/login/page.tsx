@@ -3,7 +3,7 @@ import { Compass, Waves } from "lucide-react";
 
 export default function Page() {
   return (
-    <div className="min-h-svh w-full bg-gradient-to-br from-[#FDFBF7] via-[#F5F0E6] to-[#EDE5D4] flex flex-col">
+    <div className="min-h-svh w-full bg-gradient-to-br from-[#FDFBF7] via-[#F5F0E6] to-[#EDE5D4] flex flex-col pt-8">
       {/* Decorative background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {/* Top right decorative circle */}

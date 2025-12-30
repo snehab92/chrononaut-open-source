@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Lora } from "next/font/google";
 import { ThemeProvider } from "next-themes";
+import { ElectronTitleBar } from "@/components/electron-title-bar";
 import "./globals.css";
 
 const defaultUrl = process.env.VERCEL_URL
@@ -39,6 +40,7 @@ export default function RootLayout({
           enableSystem={false}
           disableTransitionOnChange
         >
+          <ElectronTitleBar />
           {children}
         </ThemeProvider>
       </body>

@@ -66,3 +66,12 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Electron window drag region */
+.electron-drag-region {
+  -webkit-app-region: drag;
+}
+
+.electron-no-drag {
+  -webkit-app-region: no-drag;
+}

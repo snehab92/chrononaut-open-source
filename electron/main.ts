@@ -92,13 +92,14 @@ function createWindow(): void {
 
 function createTray(): void {
   const iconPath = isDev
-    ? path.join(__dirname, '../public/icons/tray-iconTemplate.png')
-    : path.join(process.resourcesPath!, 'icons/tray-iconTemplate.png');
+    ? path.join(__dirname, '../public/icons/TrayIconTemplate.svg')
+    : path.join(process.resourcesPath!, 'icons/TrayIconTemplate.svg');
 
   let trayIcon: Electron.NativeImage;
   try {
     trayIcon = nativeImage.createFromPath(iconPath);
-    trayIcon = trayIcon.resize({ width: 16, height: 16 });
+    // Mark as template image for macOS to handle light/dark mode automatically
+    trayIcon.setTemplateImage(true);
   } catch {
     trayIcon = nativeImage.createEmpty();
   }

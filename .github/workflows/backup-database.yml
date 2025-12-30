@@ -1,0 +1,111 @@
+name: Daily Database Backup
+
+on:
+  # Run daily at 2 AM UTC
+  schedule:
+    - cron: '0 2 * * *'
+
+  # Allow manual trigger
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Clone backup repository
+        env:
+          BACKUP_REPO_TOKEN: ${{ secrets.BACKUP_REPO_TOKEN }}
+        run: |
+          git clone https://snehab92:${BACKUP_REPO_TOKEN}@github.com/snehab92/chrononaut-backups.git backup-repo
+
+      - name: Run backup script
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          # Create backups directory in backup repo
+          mkdir -p backup-repo/backups
+
+          # Run backup script (outputs to ./backups/)
+          npx tsx scripts/backup-supabase.ts
+
+          # Move backups to backup repo
+          BACKUP_DATE=$(date -u +%Y-%m-%d)
+          if [ -d "backups/${BACKUP_DATE}" ]; then
+            cp -r backups/${BACKUP_DATE} backup-repo/backups/
+          fi
+
+      - name: Configure Git for backup repo
+        run: |
+          cd backup-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit and push backup
+        run: |
+          cd backup-repo
+          BACKUP_DATE=$(date -u +%Y-%m-%d)
+
+          git add backups/${BACKUP_DATE}/
+
+          # Only commit if there are changes
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "backup: database backup for ${BACKUP_DATE}"
+            git push
+          fi
+
+      - name: Clean up old backups (30+ days)
+        run: |
+          cd backup-repo
+          CUTOFF_DATE=$(date -u -d '30 days ago' +%Y-%m-%d 2>/dev/null || date -u -v-30d +%Y-%m-%d)
+          echo "Removing backups older than ${CUTOFF_DATE}..."
+
+          cd backups || exit 0
+
+          # Find and remove old backup directories
+          for dir in */; do
+            dir_date="${dir%/}"
+            if [[ "$dir_date" < "$CUTOFF_DATE" ]]; then
+              echo "Removing old backup: $dir_date"
+              rm -rf "$dir_date"
+            fi
+          done
+
+          cd ..
+
+          # Commit deletions if any
+          if git diff --quiet backups/; then
+            echo "No old backups to remove"
+          else
+            git add backups/
+            git commit -m "backup: remove backups older than ${CUTOFF_DATE}"
+            git push
+          fi
+
+      - name: Upload backup artifact (for manual review)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: database-backup-${{ github.run_number }}
+          path: backup-repo/backups/
+          retention-days: 7
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Database backup failed! Check the workflow logs for details."

@@ -365,7 +365,10 @@ export class WhoopClient {
     this.accessToken = accessToken;
   }
 
-  private async request<T>(endpoint: string, params?: Record<string, string>): Promise<T> {
+  private async request<T>(endpoint: string, params?: Record<string, string>, retryCount = 0): Promise<T> {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 1000; // Start with 1 second
+
     const url = new URL(`${WHOOP_API_URL}${endpoint}`);
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
@@ -373,21 +376,59 @@ export class WhoopClient {
       });
     }
 
-    console.log(`Whoop API request: ${url.toString()}`);
+    console.log(`Whoop API request (attempt ${retryCount + 1}): ${url.toString()}`);
 
-    const response = await fetch(url.toString(), {
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-      },
-    });
+    try {
+      const response = await fetch(url.toString(), {
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+        },
+      });
 
-    if (!response.ok) {
-      const error = await response.text();
-      console.error(`Whoop API error: ${endpoint}`, response.status, error);
-      throw new Error(`Whoop API error: ${response.status} - ${error}`);
+      // Handle rate limiting with retry
+      if (response.status === 429) {
+        if (retryCount < MAX_RETRIES) {
+          const retryAfter = response.headers.get('Retry-After');
+          const delayMs = retryAfter
+            ? parseInt(retryAfter) * 1000
+            : RETRY_DELAY_MS * Math.pow(2, retryCount); // Exponential backoff
+
+          console.warn(`Rate limited. Retrying after ${delayMs}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+          return this.request<T>(endpoint, params, retryCount + 1);
+        } else {
+          throw new Error(`Rate limited after ${MAX_RETRIES} retries`);
+        }
+      }
+
+      // Handle other errors
+      if (!response.ok) {
+        const error = await response.text();
+        console.error(`Whoop API error: ${endpoint}`, response.status, error);
+
+        // Retry on 5xx server errors
+        if (response.status >= 500 && retryCount < MAX_RETRIES) {
+          const delayMs = RETRY_DELAY_MS * Math.pow(2, retryCount);
+          console.warn(`Server error. Retrying after ${delayMs}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+          return this.request<T>(endpoint, params, retryCount + 1);
+        }
+
+        throw new Error(`Whoop API error: ${response.status} - ${error}`);
+      }
+
+      return response.json();
+    } catch (error) {
+      // Network errors - retry
+      if (retryCount < MAX_RETRIES && (error instanceof TypeError || (error as Error).message.includes('fetch'))) {
+        const delayMs = RETRY_DELAY_MS * Math.pow(2, retryCount);
+        console.warn(`Network error. Retrying after ${delayMs}ms...`, error);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        return this.request<T>(endpoint, params, retryCount + 1);
+      }
+
+      throw error;
     }
-
-    return response.json();
   }
 
   /**

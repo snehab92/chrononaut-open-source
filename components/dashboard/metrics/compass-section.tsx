@@ -34,12 +34,52 @@ export function CompassSection({
   const [committed, setCommitted] = useState(hasCommittedToday);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch insight on mount
+  // Fetch insight on mount, generate if missing
   useEffect(() => {
-    fetchInsight();
+    fetchOrGenerateInsight();
   }, []);
 
+  const fetchOrGenerateInsight = async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // First, try to fetch existing insight
+      const response = await fetch("/api/ai/agents/pattern-analyzer/morning-insight");
+      const data = await response.json();
+
+      if (data.insight) {
+        setInsight(data.insight);
+        setIsLoading(false);
+        return;
+      }
+
+      // No insight exists - generate one automatically
+      console.log("No insight found, generating new one...");
+      setIsGenerating(true);
+
+      const generateResponse = await fetch(
+        "/api/ai/agents/pattern-analyzer/morning-insight",
+        { method: "POST" }
+      );
+      const generateData = await generateResponse.json();
+
+      if (generateData.insight) {
+        setInsight(generateData.insight);
+      } else if (generateData.error) {
+        setError(generateData.error);
+      }
+    } catch (err) {
+      console.error("Error fetching/generating insight:", err);
+      setError("Failed to load insight");
+    } finally {
+      setIsLoading(false);
+      setIsGenerating(false);
+    }
+  };
+
   const fetchInsight = async () => {
+    // Kept for manual refresh
     setIsLoading(true);
     setError(null);
 

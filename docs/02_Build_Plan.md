@@ -21,15 +21,18 @@ DONE - Import/export into notebook
 DONE - Electron wrapper 
 DONE - Gcal add travel time automatically
 
-Pending
+12/30/25
+Final polish - in desktop electron wrapper
+Security review - RLS, e2ee, MFA, file backup (Supabase glitches/issues - back up?) and read.me creation
 iOS journal shortcut and full working workflow on phone web and desktop web
 iOS snippet capture shortcut and full working workflow on phone web and desktop web
 iOS shortcut voice to gcal event creation/edit/deletion
-Security review - RLS, e2ee, MFA, file backup (Supabase glitches/issues - back up?) and read.me creation
-Agents (cron jobs and chat based workflows)
+Agents final build out and polish (cron jobs and chat based workflows)
 - Daily brief: gmail clean up + labeling + auto-filtering system - identify all newsletters I am signed up for + ideation on good RSs feeds to include (healthcare earnings calls, CMS, CMMI, etc?) -> bundle/summarize cron job build out 
 - Personal life executive function automation
-- Writing coaching
+- Writing coaching in ai chat drawer
+- Skills for each agent 
+Backfill in from Notion -> Chrononaut
 
 
 

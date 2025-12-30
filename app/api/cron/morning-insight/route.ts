@@ -47,14 +47,22 @@ export async function GET(request: NextRequest) {
       const userTimezone = profile.timezone || "America/New_York";
 
       try {
-        // Get current hour in user's timezone
-        const userLocalHour = new Date(now.toLocaleString("en-US", { timeZone: userTimezone })).getHours();
+        // CRITICAL FIX: Use Intl.DateTimeFormat for reliable timezone handling
+        const formatter = new Intl.DateTimeFormat('en-US', {
+          timeZone: userTimezone,
+          hour: 'numeric',
+          hour12: false,
+        });
+
+        const userLocalHour = parseInt(formatter.format(now));
 
         // Only generate if it's 3 AM in user's timezone
         if (userLocalHour !== 3) {
           results.push({ userId: profile.id, success: true, skipped: true });
           continue;
         }
+
+        console.log(`Generating morning insight for user ${profile.id} (timezone: ${userTimezone}, hour: ${userLocalHour})`);
 
         await generateMorningInsight(profile.id);
         results.push({ userId: profile.id, success: true });

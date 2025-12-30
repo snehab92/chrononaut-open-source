@@ -899,171 +899,9 @@ export default function NotesPage() {
 
       {/* Right Panel - Editor or Folder View */}
       <div className="flex-1 flex flex-col">
-        {viewingUnfiled && userId ? (
-          <UnfiledView
-            notes={getNotebookNotes(true)}
-            userId={userId}
-            allLabels={allLabels}
-            allFolders={notebookFolders}
-            onSelectNote={(note) => {
-              setSelectedNote(note);
-              setCameFromFolder(null);
-              setCameFromUnfiled(true);
-              setViewingUnfiled(false);
-            }}
-            onCreateNote={async () => {
-              await createNote("document");
-            }}
-            onUpdateNote={async (noteId, updates) => {
-              const { error } = await supabase
-                .from("notes")
-                .update(updates)
-                .eq("id", noteId);
-              if (!error) {
-                setNotes(prev => prev.map(n =>
-                  n.id === noteId ? { ...n, ...updates } : n
-                ));
-              }
-            }}
-            onDeleteNote={deleteNote}
-            onCreateFolder={handleCreateFolder}
-            onImportNote={async (result) => {
-              // Create a new unfiled note with the imported content
-              const { data, error } = await supabase
-                .from("notes")
-                .insert({
-                  user_id: userId,
-                  title: result.title || "Imported Note",
-                  content: result.content,
-                  note_type: result.noteType || "document",
-                  folder_id: null, // Unfiled
-                  tags: result.tags || [],
-                  is_starred: false,
-                })
-                .select()
-                .single();
-
-              if (!error && data) {
-                setNotes(prev => [data, ...prev]);
-                setSelectedNote(data);
-                setCameFromFolder(null);
-                setCameFromUnfiled(true);
-                setViewingUnfiled(false);
-              }
-            }}
-          />
-        ) : viewingAllNotes && userId ? (
-          <AllNotesView
-            notes={getNotebookNotes(false)}
-            userId={userId}
-            allLabels={allLabels}
-            allFolders={notebookFolders}
-            onSelectNote={(note) => {
-              setSelectedNote(note);
-              setCameFromFolder(null);
-              setCameFromUnfiled(false);
-              setCameFromAllNotes(true);
-              setViewingAllNotes(false);
-            }}
-            onCreateNote={async () => {
-              await createNote("document");
-            }}
-            onUpdateNote={async (noteId, updates) => {
-              const { error } = await supabase
-                .from("notes")
-                .update(updates)
-                .eq("id", noteId);
-              if (!error) {
-                setNotes(prev => prev.map(n =>
-                  n.id === noteId ? { ...n, ...updates } : n
-                ));
-              }
-            }}
-            onDeleteNote={deleteNote}
-            onCreateFolder={handleCreateFolder}
-            onImportNote={async (result) => {
-              // Create a new unfiled note with the imported content
-              const { data, error } = await supabase
-                .from("notes")
-                .insert({
-                  user_id: userId,
-                  title: result.title || "Imported Note",
-                  content: result.content,
-                  note_type: result.noteType || "document",
-                  folder_id: null,
-                  tags: result.tags || [],
-                  is_starred: false,
-                })
-                .select()
-                .single();
-
-              if (!error && data) {
-                setNotes(prev => [data, ...prev]);
-                setSelectedNote(data);
-                setCameFromFolder(null);
-                setCameFromUnfiled(false);
-                setCameFromAllNotes(true);
-                setViewingAllNotes(false);
-              }
-            }}
-          />
-        ) : viewingFolder && userId ? (
-          <FolderView
-            folder={viewingFolder}
-            notes={getFilteredNotesInFolder(viewingFolder.id)}
-            userId={userId}
-            allLabels={allLabels}
-            allFolders={notebookFolders}
-            onSelectNote={(note) => {
-              setSelectedNote(note);
-              setCameFromFolder(viewingFolder);
-              setCameFromUnfiled(false);
-              setViewingFolder(null);
-            }}
-            onCreateNote={async (folderId) => {
-              await createNote("document", folderId);
-            }}
-            onUpdateNote={async (noteId, updates) => {
-              const { error } = await supabase
-                .from("notes")
-                .update(updates)
-                .eq("id", noteId);
-              if (!error) {
-                setNotes(prev => prev.map(n =>
-                  n.id === noteId ? { ...n, ...updates } : n
-                ));
-              }
-            }}
-            onDeleteNote={deleteNote}
-            onCreateFolder={handleCreateFolder}
-            onImportNote={async (folderId, result) => {
-              // Create a new note with the imported content
-              const { data, error } = await supabase
-                .from("notes")
-                .insert({
-                  user_id: userId,
-                  title: result.title || "Imported Note",
-                  content: result.content,
-                  note_type: result.noteType || "document",
-                  folder_id: folderId,
-                  tags: result.tags || [],
-                  is_starred: false,
-                })
-                .select()
-                .single();
-
-              if (!error && data) {
-                setNotes(prev => [data, ...prev]);
-                setSelectedNote(data);
-                setCameFromFolder(viewingFolder);
-                setCameFromUnfiled(false);
-                setViewingFolder(null);
-              }
-            }}
-          />
-        ) : selectedNote ? (
+        {selectedNote ? (
           <>
-            {/* Back to Folder/Unfiled/All Notes button */}
+            {/* Editor - HIGHEST PRIORITY */}
             {(cameFromFolder || cameFromUnfiled || cameFromAllNotes) && (
               <div className="px-4 py-2 border-b border-[#E8DCC4] bg-[#FAF8F5]">
                 <Button
@@ -1120,211 +958,8 @@ export default function NotesPage() {
                       <Pencil className="w-4 h-4 opacity-0 group-hover:opacity-50 flex-shrink-0" />
                     </button>
                   )}
-
-                  {/* Label - immediately after title */}
-                  <div className="relative flex items-center gap-1 flex-shrink-0">
-                  {currentLabel ? (
-                    <>
-                      <span className={cn(
-                        "text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1",
-                        getLabelColor(currentLabel).bg,
-                        getLabelColor(currentLabel).text
-                      )}>
-                        {currentLabel}
-                        <button
-                          onClick={() => setNoteLabel(null)}
-                          className="hover:opacity-70"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </span>
-                      <button
-                        onClick={() => setShowLabelDropdown(true)}
-                        className="text-xs text-[#8B9A8F] hover:text-[#5C7A6B]"
-                      >
-                        Change
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      onClick={() => {
-                        setShowLabelDropdown(true);
-                        setTimeout(() => labelInputRef.current?.focus(), 0);
-                      }}
-                      className="text-xs text-[#8B9A8F] hover:text-[#5C7A6B] flex items-center gap-1 px-2 py-1 rounded hover:bg-[#F5F0E6]"
-                    >
-                      <Tag className="w-3 h-3" />
-                      Add label
-                    </button>
-                  )}
-
-                  {/* Label dropdown */}
-                  {showLabelDropdown && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-40"
-                        onClick={() => {
-                          setShowLabelDropdown(false);
-                          setLabelInputValue("");
-                        }}
-                      />
-                      <div className="absolute top-full right-0 mt-1 z-50 bg-white rounded-lg shadow-lg border border-[#E8DCC4] p-2 min-w-[200px]">
-                        <Input
-                          ref={labelInputRef}
-                          value={labelInputValue}
-                          onChange={(e) => setLabelInputValue(e.target.value)}
-                          onKeyDown={handleLabelKeyDown}
-                          placeholder="Type label & press Enter"
-                          className="h-8 text-sm mb-2"
-                          autoFocus
-                        />
-                        {filteredLabels.length > 0 && (
-                          <div className="max-h-32 overflow-y-auto">
-                            <p className="text-xs text-[#8B9A8F] px-2 mb-1">Existing labels</p>
-                            {filteredLabels.map(label => {
-                              const color = getLabelColor(label);
-                              return (
-                                <div
-                                  key={label}
-                                  className="w-full px-2 py-1.5 text-left text-sm hover:bg-[#F5F0E6] rounded flex items-center justify-between group/label"
-                                >
-                                  <button
-                                    onClick={() => setNoteLabel(label)}
-                                    className="flex items-center gap-2 flex-1"
-                                  >
-                                    <span className={cn(
-                                      "text-xs px-2 py-0.5 rounded-full",
-                                      color.bg, color.text
-                                    )}>
-                                      {label}
-                                    </span>
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      notes.forEach(async (n) => {
-                                        if (n.tags?.includes(label)) {
-                                          const newTags = n.tags.filter(t => t !== label);
-                                          await supabase.from("notes").update({ tags: newTags }).eq("id", n.id);
-                                        }
-                                      });
-                                      setNotes(prev => prev.map(n =>
-                                        n.tags?.includes(label)
-                                          ? { ...n, tags: n.tags.filter(t => t !== label) }
-                                          : n
-                                      ));
-                                      if (selectedNote?.tags?.includes(label)) {
-                                        setSelectedNote({ ...selectedNote, tags: selectedNote.tags.filter(t => t !== label) });
-                                      }
-                                    }}
-                                    className="opacity-0 group-hover/label:opacity-100 p-1 hover:bg-red-100 rounded text-red-500"
-                                    title="Delete label from all notes"
-                                  >
-                                    <Trash2 className="w-3 h-3" />
-                                  </button>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                        {labelInputValue && !filteredLabels.includes(labelInputValue) && (
-                          <button
-                            onClick={() => setNoteLabel(labelInputValue.trim())}
-                            className="w-full px-2 py-1.5 text-left text-sm hover:bg-[#F5F0E6] rounded flex items-center gap-2 border-t border-[#E8DCC4] mt-1 pt-2"
-                          >
-                            <Plus className="w-3 h-3" />
-                            Create "{labelInputValue}"
-                          </button>
-                        )}
-                      </div>
-                    </>
-                  )}
-                  </div>
                 </div>
-
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => toggleStar(selectedNote.id, selectedNote.is_starred)}
-                  className="h-8 w-8 p-0 flex-shrink-0"
-                >
-                  <Star className={cn(
-                    "w-4 h-4",
-                    selectedNote.is_starred && "fill-[#D4A84B] text-[#D4A84B]"
-                  )} />
-                </Button>
-
-                <Select
-                  value={selectedNote.note_type}
-                  onValueChange={(value: NoteType) => updateNoteImmediate({ note_type: value })}
-                >
-                  <SelectTrigger className="w-36 bg-[#F5F0E6] border-[#E8DCC4] h-9 flex-shrink-0">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(NOTE_TYPE_LABELS).map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <Select
-                  value={selectedNote.folder_id || "none"}
-                  onValueChange={(value) => updateNoteImmediate({ folder_id: value === "none" ? null : value })}
-                >
-                  <SelectTrigger className="w-36 bg-[#F5F0E6] border-[#E8DCC4] h-9 flex-shrink-0">
-                    <SelectValue placeholder="No folder" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No folder</SelectItem>
-                    {folders.map((folder) => (
-                      <SelectItem key={folder.id} value={folder.id}>
-                        {folder.folder_type === "ai_conversations" ? "✨ " : "📁 "}
-                        {folder.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <ExportImportMenu
-                  note={{
-                    id: selectedNote.id,
-                    title: selectedNote.title,
-                    content: selectedNote.content,
-                    note_type: selectedNote.note_type,
-                    tags: selectedNote.tags,
-                    created_at: selectedNote.created_at,
-                  }}
-                  onImport={(result: ImportResult) => {
-                    // Update content from import
-                    if (result.title && result.title !== "Imported Note") {
-                      setLocalTitle(result.title);
-                    }
-                    setLocalContent(result.content);
-                    debouncedSave({
-                      content: result.content,
-                      title: result.title !== "Imported Note" ? result.title : undefined,
-                    });
-                    // Force editor refresh
-                    setEditorKey(prev => prev + 1);
-                  }}
-                  onOpenImportDialog={() => setImportDialogOpen(true)}
-                  onDelete={() => deleteNote(selectedNote.id)}
-                />
-
-                {isSaving && (
-                  <span className="text-xs text-[#8B9A8F] flex-shrink-0">Saving...</span>
-                )}
               </div>
-
-              {/* Row 2: Meeting Event Badge - only for meeting notes with linked calendar event */}
-              {selectedNote.note_type === "meeting" && selectedNote.calendar_event_id && (
-                <MeetingEventBadge
-                  calendarEventId={selectedNote.calendar_event_id}
-                />
-              )}
             </div>
 
             <div className="flex-1 overflow-hidden">
@@ -1341,6 +976,194 @@ export default function NotesPage() {
               />
             </div>
           </>
+        ) : viewingUnfiled && userId ? (
+          <UnfiledView
+            notes={getNotebookNotes(true)}
+            userId={userId}
+            allLabels={allLabels}
+            allFolders={notebookFolders}
+            onSelectNote={(note) => {
+              // Clear ALL viewing states to ensure clean transition
+              setViewingUnfiled(false);
+              setViewingAllNotes(false);
+              setViewingFolder(null);
+
+              // Set navigation breadcrumb
+              setCameFromUnfiled(true);
+              setCameFromFolder(null);
+              setCameFromAllNotes(false);
+
+              // Finally, set the selected note (triggers editor render)
+              setSelectedNote(note);
+            }}
+            onCreateNote={async () => {
+              await createNote("document");
+            }}
+            onUpdateNote={async (noteId, updates) => {
+              const { error } = await supabase
+                .from("notes")
+                .update(updates)
+                .eq("id", noteId);
+              if (!error) {
+                setNotes(prev => prev.map(n =>
+                  n.id === noteId ? { ...n, ...updates } : n
+                ));
+              }
+            }}
+            onDeleteNote={deleteNote}
+            onCreateFolder={handleCreateFolder}
+            onImportNote={async (result) => {
+              // Create a new unfiled note with the imported content
+              const { data, error } = await supabase
+                .from("notes")
+                .insert({
+                  user_id: userId,
+                  title: result.title || "Imported Note",
+                  content: result.content,
+                  note_type: result.noteType || "document",
+                  folder_id: null, // Unfiled
+                  tags: result.tags || [],
+                  is_starred: false,
+                })
+                .select()
+                .single();
+
+              if (!error && data) {
+                setNotes(prev => [data, ...prev]);
+                setSelectedNote(data);
+                setCameFromFolder(null);
+                setCameFromUnfiled(true);
+                setViewingUnfiled(false);
+              }
+            }}
+          />
+        ) : viewingAllNotes && userId ? (
+          <AllNotesView
+            notes={getNotebookNotes(false)}
+            userId={userId}
+            allLabels={allLabels}
+            allFolders={notebookFolders}
+            onSelectNote={(note) => {
+              // Clear ALL viewing states to ensure clean transition
+              setViewingUnfiled(false);
+              setViewingAllNotes(false);
+              setViewingFolder(null);
+
+              // Set navigation breadcrumb
+              setCameFromAllNotes(true);
+              setCameFromFolder(null);
+              setCameFromUnfiled(false);
+
+              // Finally, set the selected note (triggers editor render)
+              setSelectedNote(note);
+            }}
+            onCreateNote={async () => {
+              await createNote("document");
+            }}
+            onUpdateNote={async (noteId, updates) => {
+              const { error } = await supabase
+                .from("notes")
+                .update(updates)
+                .eq("id", noteId);
+              if (!error) {
+                setNotes(prev => prev.map(n =>
+                  n.id === noteId ? { ...n, ...updates } : n
+                ));
+              }
+            }}
+            onDeleteNote={deleteNote}
+            onCreateFolder={handleCreateFolder}
+            onImportNote={async (result) => {
+              // Create a new unfiled note with the imported content
+              const { data, error } = await supabase
+                .from("notes")
+                .insert({
+                  user_id: userId,
+                  title: result.title || "Imported Note",
+                  content: result.content,
+                  note_type: result.noteType || "document",
+                  folder_id: null,
+                  tags: result.tags || [],
+                  is_starred: false,
+                })
+                .select()
+                .single();
+
+              if (!error && data) {
+                setNotes(prev => [data, ...prev]);
+                setSelectedNote(data);
+                setCameFromFolder(null);
+                setCameFromUnfiled(false);
+                setCameFromAllNotes(true);
+                setViewingAllNotes(false);
+              }
+            }}
+          />
+        ) : viewingFolder && userId ? (
+          <FolderView
+            folder={viewingFolder}
+            notes={getFilteredNotesInFolder(viewingFolder.id)}
+            userId={userId}
+            allLabels={allLabels}
+            allFolders={notebookFolders}
+            onSelectNote={(note) => {
+              // Save current folder for breadcrumb BEFORE clearing
+              const currentFolder = viewingFolder;
+
+              // Clear ALL viewing states to ensure clean transition
+              setViewingUnfiled(false);
+              setViewingAllNotes(false);
+              setViewingFolder(null);
+
+              // Set navigation breadcrumb
+              setCameFromFolder(currentFolder);
+              setCameFromUnfiled(false);
+              setCameFromAllNotes(false);
+
+              // Finally, set the selected note (triggers editor render)
+              setSelectedNote(note);
+            }}
+            onCreateNote={async (folderId) => {
+              await createNote("document", folderId);
+            }}
+            onUpdateNote={async (noteId, updates) => {
+              const { error } = await supabase
+                .from("notes")
+                .update(updates)
+                .eq("id", noteId);
+              if (!error) {
+                setNotes(prev => prev.map(n =>
+                  n.id === noteId ? { ...n, ...updates } : n
+                ));
+              }
+            }}
+            onDeleteNote={deleteNote}
+            onCreateFolder={handleCreateFolder}
+            onImportNote={async (folderId, result) => {
+              // Create a new note with the imported content
+              const { data, error } = await supabase
+                .from("notes")
+                .insert({
+                  user_id: userId,
+                  title: result.title || "Imported Note",
+                  content: result.content,
+                  note_type: result.noteType || "document",
+                  folder_id: folderId,
+                  tags: result.tags || [],
+                  is_starred: false,
+                })
+                .select()
+                .single();
+
+              if (!error && data) {
+                setNotes(prev => [data, ...prev]);
+                setSelectedNote(data);
+                setCameFromFolder(viewingFolder);
+                setCameFromUnfiled(false);
+                setViewingFolder(null);
+              }
+            }}
+          />
         ) : (
           <div className="flex-1 flex items-center justify-center text-[#8B9A8F]">
             <div className="text-center">

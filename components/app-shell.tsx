@@ -84,7 +84,7 @@ export function AppShell({ children, user }: AppShellProps) {
             variant="ghost"
             size="sm"
             onClick={() => setCollapsed(!collapsed)}
-            className="h-8 w-8 p-0 text-[#5C7A6B] hover:text-[#2D5A47] hover:bg-[#E8DCC4]/50"
+            className="h-8 w-8 p-0 text-[#5C7A6B] hover:text-[#2D5A47] hover:bg-[#E8DCC4]/50 electron-no-drag"
           >
             <ChevronLeft
               className={cn("h-4 w-4 transition-transform duration-300", collapsed && "rotate-180")}
@@ -101,7 +101,7 @@ export function AppShell({ children, user }: AppShellProps) {
               variant="outline"
               onClick={openQuickTask}
               className={cn(
-                "mb-6 gap-2 border-[#D4C5A9] bg-gradient-to-r from-[#F5F0E6] to-[#FDFBF7] hover:from-[#EDE5D4] hover:to-[#F5F0E6] text-[#5C4B32] shadow-sm transition-all duration-200 hover:shadow-md hover:scale-[1.02]",
+                "mb-6 gap-2 border-[#D4C5A9] bg-gradient-to-r from-[#F5F0E6] to-[#FDFBF7] hover:from-[#EDE5D4] hover:to-[#F5F0E6] text-[#5C4B32] shadow-sm transition-all duration-200 hover:shadow-md hover:scale-[1.02] electron-no-drag",
                 collapsed && !mobile ? "w-10 h-10 p-0" : "w-full justify-start h-11"
               )}
             >
@@ -134,7 +134,7 @@ export function AppShell({ children, user }: AppShellProps) {
                     href={item.href}
                     onClick={() => mobile && setMobileOpen(false)}
                     className={cn(
-                      "group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200",
+                      "group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 electron-no-drag",
                       isActive
                         ? "bg-[#2D5A47] text-[#E8DCC4] shadow-md"
                         : "text-[#5C7A6B] hover:bg-[#E8DCC4]/50 hover:text-[#2D5A47]",
@@ -219,7 +219,7 @@ export function AppShell({ children, user }: AppShellProps) {
               <Link
                 href="/settings"
                 className={cn(
-                  "group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-[#5C7A6B] hover:bg-[#E8DCC4]/50 hover:text-[#2D5A47] transition-all duration-200",
+                  "group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-[#5C7A6B] hover:bg-[#E8DCC4]/50 hover:text-[#2D5A47] transition-all duration-200 electron-no-drag",
                   collapsed && !mobile && "justify-center px-2"
                 )}
               >
@@ -239,7 +239,7 @@ export function AppShell({ children, user }: AppShellProps) {
               <button
                 onClick={handleLogout}
                 className={cn(
-                  "group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-[#5C7A6B] hover:bg-[#E8DCC4]/50 hover:text-[#2D5A47] transition-all duration-200 w-full",
+                  "group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-[#5C7A6B] hover:bg-[#E8DCC4]/50 hover:text-[#2D5A47] transition-all duration-200 w-full electron-no-drag",
                   collapsed && !mobile && "justify-center px-2"
                 )}
               >
@@ -263,7 +263,7 @@ export function AppShell({ children, user }: AppShellProps) {
       {/* Desktop Sidebar */}
       <aside
         className={cn(
-          "hidden md:flex flex-col border-r border-[#E8DCC4] bg-gradient-to-b from-[#FDFBF7] via-[#F5F0E6] to-[#EDE5D4] transition-all duration-300 shadow-sm",
+          "hidden md:flex flex-col border-r border-[#E8DCC4] bg-gradient-to-b from-[#FDFBF7] via-[#F5F0E6] to-[#EDE5D4] transition-all duration-300 shadow-sm pt-16",
           collapsed ? "w-[72px]" : "w-72"
         )}
       >
@@ -271,7 +271,7 @@ export function AppShell({ children, user }: AppShellProps) {
       </aside>
 
       {/* Mobile Header + Sheet */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 pt-16">
         <header className="md:hidden flex items-center gap-4 border-b border-[#E8DCC4] px-4 h-14 bg-gradient-to-r from-[#FDFBF7] to-[#F5F0E6]">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>

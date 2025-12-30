@@ -36,19 +36,22 @@ export async function pullEventsFromGoogle(
   };
 
   try {
-    // Fetch events from ALL calendars (next 30 days by default)
+    // Fetch events from ALL calendars
+    // Extended range: 30 days back (for recent changes) + 90 days forward (for advance planning)
     const now = new Date();
     const thirtyDaysAgo = new Date(now);
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 7); // Include recent past events
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const thirtyDaysFromNow = new Date(now);
-    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+    const ninetyDaysFromNow = new Date(now);
+    ninetyDaysFromNow.setDate(ninetyDaysFromNow.getDate() + 90);
+
+    console.log(`Syncing Google Calendar events from ${thirtyDaysAgo.toISOString()} to ${ninetyDaysFromNow.toISOString()}`);
 
     // Use getAllCalendarEvents to fetch from all calendars, not just primary
     const googleEvents = await client.getAllCalendarEvents({
       timeMin: thirtyDaysAgo,
-      timeMax: thirtyDaysFromNow,
-      maxResults: 250,
+      timeMax: ninetyDaysFromNow,
+      maxResults: 2500, // Increased to handle pagination properly
     });
 
     console.log(`\n=== SYNC PROCESSING ${googleEvents.length} EVENTS ===`);

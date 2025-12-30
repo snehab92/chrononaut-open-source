@@ -190,7 +190,7 @@ export class GoogleCalendarClient {
   }
 
   /**
-   * Get events from primary calendar
+   * Get events from primary calendar with pagination support
    */
   async getEvents(options: {
     timeMin?: Date;
@@ -201,7 +201,7 @@ export class GoogleCalendarClient {
     const {
       timeMin = new Date(),
       timeMax,
-      maxResults = 100,
+      maxResults = 2500,
       calendarId = 'primary',
     } = options;
 
@@ -209,23 +209,60 @@ export class GoogleCalendarClient {
     const defaultTimeMax = new Date(timeMin);
     defaultTimeMax.setDate(defaultTimeMax.getDate() + 30);
 
-    const params: Record<string, string | string[]> = {
-      timeMin: timeMin.toISOString(),
-      timeMax: (timeMax || defaultTimeMax).toISOString(),
-      maxResults: maxResults.toString(),
-      singleEvents: 'true', // Expand recurring events
-      orderBy: 'startTime',
-      // Include both regular events AND Gmail-generated events (flights, hotels, reservations)
-      // Required since May 2024 when Google separated these event types
-      eventTypes: ['default', 'fromGmail'],
-    };
+    const allEvents: CalendarEvent[] = [];
+    let pageToken: string | undefined;
+    let requestCount = 0;
+    const MAX_REQUESTS = 10; // Safety limit to prevent infinite loops
 
-    const response = await this.request<{ items: CalendarEvent[] }>(
-      `/calendars/${encodeURIComponent(calendarId)}/events`,
-      params
-    );
+    do {
+      const params: Record<string, string | string[]> = {
+        timeMin: timeMin.toISOString(),
+        timeMax: (timeMax || defaultTimeMax).toISOString(),
+        maxResults: '250', // Google's max per request
+        singleEvents: 'true', // Expand recurring events
+        orderBy: 'startTime',
+        // Include both regular events AND Gmail-generated events (flights, hotels, reservations)
+        // Required since May 2024 when Google separated these event types
+        eventTypes: ['default', 'fromGmail'],
+        showDeleted: 'false',
+        // CRITICAL FIX: Include events where user is attendee but not organizer
+        privateExtendedProperty: 'true',
+      };
 
-    return response.items || [];
+      if (pageToken) {
+        params.pageToken = pageToken;
+      }
+
+      const response = await this.request<{
+        items: CalendarEvent[];
+        nextPageToken?: string;
+      }>(
+        `/calendars/${encodeURIComponent(calendarId)}/events`,
+        params
+      );
+
+      const events = response.items || [];
+      allEvents.push(...events);
+
+      pageToken = response.nextPageToken;
+      requestCount++;
+
+      console.log(`Fetched ${events.length} events from ${calendarId} (page ${requestCount}, total: ${allEvents.length})`);
+
+      // Safety check
+      if (requestCount >= MAX_REQUESTS) {
+        console.warn(`Reached max pagination requests (${MAX_REQUESTS}) for calendar ${calendarId}`);
+        break;
+      }
+
+      // Stop if we've hit the requested limit
+      if (allEvents.length >= maxResults) {
+        break;
+      }
+    } while (pageToken);
+
+    // Return up to maxResults
+    return allEvents.slice(0, maxResults);
   }
 
   /**
@@ -253,12 +290,19 @@ export class GoogleCalendarClient {
         console.log(`  - "${cal.summary}" | role: ${cal.accessRole} | primary: ${cal.primary} | selected: ${cal.selected}`);
       });
 
-      // Return all calendars where user has read access (owner, writer, reader)
+      // Return all calendars where user has read access (owner, writer, reader, freeBusyReader)
       // This includes hidden calendars that may contain auto-created events from email (reservations, etc.)
-      const calendars = (response.items || []).filter(cal =>
-        cal.accessRole === 'owner' || cal.accessRole === 'writer' || cal.accessRole === 'reader'
-      );
-      console.log(`Using ${calendars.length} calendars with read access`);
+      const calendars = (response.items || []).filter(cal => {
+        // Include owner, writer, reader, AND freeBusyReader (common for shared/subscribed calendars)
+        const hasAccess = ['owner', 'writer', 'reader', 'freeBusyReader'].includes(cal.accessRole || '');
+
+        // Additional filter: only include if selected OR primary (ignore deselected calendars)
+        const isIncluded = cal.selected !== false || cal.primary === true;
+
+        return hasAccess && isIncluded;
+      });
+
+      console.log(`Using ${calendars.length} calendars with read access (filtered from ${(response.items || []).length} total)`);
       return calendars;
     } catch (error) {
       console.error('Failed to fetch calendar list:', error);

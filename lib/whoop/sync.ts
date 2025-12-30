@@ -38,13 +38,60 @@ export async function syncWhoopData(
   };
 
   try {
-    // Fetch data (Whoop API limit is 25 per request)
-    const [recoveryData, sleepData, cycleData, workoutData] = await Promise.all([
-      client.getRecovery({ limit: 25 }),
-      client.getSleep({ limit: 25 }),
-      client.getCycles({ limit: 25 }),
-      client.getWorkouts({ limit: 25 }),
+    // Calculate date range: last 30 days
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    // Format dates as YYYY-MM-DD (Whoop API requirement)
+    const startDate = thirtyDaysAgo.toISOString().split('T')[0];
+    const endDate = now.toISOString().split('T')[0];
+
+    console.log(`Syncing Whoop data from ${startDate} to ${endDate}`);
+
+    // CRITICAL FIX: Fetch data with date parameters AND error isolation
+    // Use Promise.allSettled instead of Promise.all to handle partial failures
+    const [recoveryResult, sleepResult, cycleResult, workoutResult] = await Promise.allSettled([
+      client.getRecovery({ startDate, endDate, limit: 100 }),
+      client.getSleep({ startDate, endDate, limit: 100 }),
+      client.getCycles({ startDate, endDate, limit: 100 }),
+      client.getWorkouts({ startDate, endDate, limit: 100 }),
     ]);
+
+    // Extract data from settled promises, logging errors but continuing
+    const recoveryData = recoveryResult.status === 'fulfilled'
+      ? recoveryResult.value
+      : { records: [] };
+    if (recoveryResult.status === 'rejected') {
+      result.errors.push(`Recovery sync failed: ${recoveryResult.reason}`);
+      console.error('Recovery sync error:', recoveryResult.reason);
+    }
+
+    const sleepData = sleepResult.status === 'fulfilled'
+      ? sleepResult.value
+      : { records: [] };
+    if (sleepResult.status === 'rejected') {
+      result.errors.push(`Sleep sync failed: ${sleepResult.reason}`);
+      console.error('Sleep sync error:', sleepResult.reason);
+    }
+
+    const cycleData = cycleResult.status === 'fulfilled'
+      ? cycleResult.value
+      : { records: [] };
+    if (cycleResult.status === 'rejected') {
+      result.errors.push(`Cycle sync failed: ${cycleResult.reason}`);
+      console.error('Cycle sync error:', cycleResult.reason);
+    }
+
+    const workoutData = workoutResult.status === 'fulfilled'
+      ? workoutResult.value
+      : { records: [] };
+    if (workoutResult.status === 'rejected') {
+      result.errors.push(`Workout sync failed: ${workoutResult.reason}`);
+      console.error('Workout sync error:', workoutResult.reason);
+    }
+
+    console.log(`Fetched: ${recoveryData.records?.length || 0} recoveries, ${sleepData.records?.length || 0} sleeps, ${cycleData.records?.length || 0} cycles, ${workoutData.records?.length || 0} workouts`);
 
     // Process health metrics (combine recovery, sleep, strain by date)
     const metricsResult = await syncHealthMetrics(
@@ -65,6 +112,9 @@ export async function syncWhoopData(
     );
     result.workouts = workoutsResult.count;
     result.errors.push(...workoutsResult.errors);
+
+    // Mark as success only if we got SOME data
+    result.success = (result.healthMetrics > 0 || result.workouts > 0) || result.errors.length === 0;
 
   } catch (error) {
     result.success = false;
