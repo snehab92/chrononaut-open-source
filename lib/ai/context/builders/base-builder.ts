@@ -431,7 +431,7 @@ export abstract class BaseContextBuilder {
                       encrypted_strain_score: null,
                       is_encrypted: true,
                     });
-                    recoveryScore = decrypted.recovery_score;
+                    recoveryScore = decrypted.recovery_score ?? null;
                     // Convert minutes to hours for sleep
                     sleepHours = decrypted.sleep_duration_minutes
                       ? decrypted.sleep_duration_minutes / 60
