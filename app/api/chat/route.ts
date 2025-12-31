@@ -17,6 +17,10 @@ import {
   trackTokenUsage,
   checkBudgetStatus,
 } from "@/lib/ai/context";
+import {
+  encryptConversationTitle,
+  encryptMessage,
+} from "@/lib/encryption/ai-conversations";
 
 export const maxDuration = 30;
 
@@ -197,12 +201,17 @@ async function saveMessage(
       .single();
 
     if (!conversation) {
-      // Create new conversation
+      // Create new conversation with E2EE encrypted title
+      const titleText = messages[0]?.content?.slice(0, 50) || "New conversation";
+      const encryptedTitle = await encryptConversationTitle(titleText);
+
       await supabase.from("ai_conversations").insert({
         id: conversationId,
         user_id: userId,
         agent_type: agentType,
-        title: messages[0]?.content?.slice(0, 50) || "New conversation",
+        title: titleText, // Keep plaintext for backward compatibility
+        encrypted_title: encryptedTitle,
+        is_encrypted: true,
       });
     } else {
       // Update last_message_at
@@ -212,15 +221,19 @@ async function saveMessage(
         .eq("id", conversationId);
     }
 
-    // Save the latest user message
+    // Save the latest user message with E2EE encryption
     const lastUserMessage = messages
       .filter((m: { role: string }) => m.role === "user")
       .pop();
     if (lastUserMessage) {
+      const encryptedContent = await encryptMessage(lastUserMessage.content);
+
       await supabase.from("ai_messages").insert({
         conversation_id: conversationId,
         role: "user",
-        content: lastUserMessage.content,
+        content: lastUserMessage.content, // Keep plaintext for backward compatibility
+        encrypted_content: encryptedContent,
+        is_encrypted: true,
         model: model,
       });
     }

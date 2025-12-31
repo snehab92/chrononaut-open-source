@@ -22,8 +22,8 @@ DONE - Electron wrapper
 DONE - Gcal add travel time automatically
 
 12/30/25
-Final polish - in desktop electron wrapper
-Security review - RLS, e2ee, MFA, file backup (Supabase glitches/issues - back up?) and read.me creation
+IN PROGRESS Final polish - in desktop electron wrapper
+IN PROGRESS Security review - RLS, e2ee, MFA, file backup (Supabase glitches/issues - back up?) and security_rules.md creation
 iOS journal shortcut and full working workflow on phone web and desktop web
 iOS snippet capture shortcut and full working workflow on phone web and desktop web
 iOS shortcut voice to gcal event creation/edit/deletion

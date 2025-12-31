@@ -25,6 +25,8 @@ import {
   type CalendarEventSummary,
   getContextConfig,
 } from "../types";
+import { decryptMessage } from "@/lib/encryption/ai-conversations";
+import { decryptHealthMetrics } from "@/lib/encryption/health-metrics";
 
 // =============================================================================
 // BASE CONTEXT BUILDER
@@ -199,6 +201,8 @@ export abstract class BaseContextBuilder {
             .select(`
               id,
               content,
+              encrypted_content,
+              is_encrypted,
               created_at,
               conversation:ai_conversations!inner(agent_type)
             `)
@@ -206,13 +210,33 @@ export abstract class BaseContextBuilder {
             .eq("ai_conversations.agent_type", this.agentType)
             .order("created_at", { ascending: false })
             .limit(15);
-          results.savedMemories = (data || []).map((m: Record<string, unknown>) => ({
-            id: m.id as string,
-            content: m.content as string,
-            agentType: this.agentType,
-            importance: 1,
-            createdAt: new Date(m.created_at as string),
-          }));
+
+          // Decrypt messages that are encrypted
+          const memories = await Promise.all(
+            (data || []).map(async (m: Record<string, unknown>) => {
+              let content = m.content as string;
+
+              // If encrypted, decrypt it
+              if (m.is_encrypted && m.encrypted_content) {
+                try {
+                  content = await decryptMessage(m.encrypted_content as string);
+                } catch (error) {
+                  console.error("Error decrypting saved memory:", error);
+                  content = "[Decryption failed]";
+                }
+              }
+
+              return {
+                id: m.id as string,
+                content,
+                agentType: this.agentType,
+                importance: 1,
+                createdAt: new Date(m.created_at as string),
+              };
+            })
+          );
+
+          results.savedMemories = memories;
         })()
       );
     }
@@ -383,23 +407,62 @@ export abstract class BaseContextBuilder {
         (async () => {
           const { data } = await supabase
             .from("health_metrics")
-            .select("recovery_score, sleep_hours, metric_date")
+            .select("recovery_score, sleep_hours, metric_date, encrypted_recovery_score, encrypted_sleep_duration_minutes, is_encrypted")
             .eq("user_id", userId)
             .gte("metric_date", weekAgo)
             .order("metric_date", { ascending: false });
-          if (data && data.length > 0) {
-            const d0 = data[0] as Record<string, unknown>;
-            context.todayRecovery = d0.recovery_score as number;
-            context.sleepHours = d0.sleep_hours as number;
 
-            // Calculate trend
-            if (data.length >= 3) {
-              const recent = data.slice(0, 3).map((d: Record<string, unknown>) => (d.recovery_score as number) || 0);
-              const older = data.slice(-3).map((d: Record<string, unknown>) => (d.recovery_score as number) || 0);
-              const recentAvg = recent.reduce((a, b) => a + b, 0) / recent.length;
-              const olderAvg = older.reduce((a, b) => a + b, 0) / older.length;
-              context.weeklyRecoveryTrend =
-                recentAvg > olderAvg + 5 ? "up" : recentAvg < olderAvg - 5 ? "down" : "stable";
+          if (data && data.length > 0) {
+            // Decrypt all metrics
+            const decryptedMetrics = await Promise.all(
+              data.map(async (d: Record<string, unknown>) => {
+                let recoveryScore = d.recovery_score as number | null;
+                let sleepHours = d.sleep_hours as number | null;
+
+                // If encrypted, decrypt it
+                if (d.is_encrypted && (d.encrypted_recovery_score || d.encrypted_sleep_duration_minutes)) {
+                  try {
+                    const decrypted = await decryptHealthMetrics({
+                      encrypted_recovery_score: d.encrypted_recovery_score as string | null,
+                      encrypted_sleep_duration_minutes: d.encrypted_sleep_duration_minutes as string | null,
+                      encrypted_hrv_rmssd: null,
+                      encrypted_resting_hr: null,
+                      encrypted_sleep_performance: null,
+                      encrypted_strain_score: null,
+                      is_encrypted: true,
+                    });
+                    recoveryScore = decrypted.recovery_score;
+                    // Convert minutes to hours for sleep
+                    sleepHours = decrypted.sleep_duration_minutes
+                      ? decrypted.sleep_duration_minutes / 60
+                      : null;
+                  } catch (error) {
+                    console.error("Error decrypting health metrics:", error);
+                  }
+                }
+
+                return {
+                  metric_date: d.metric_date,
+                  recovery_score: recoveryScore,
+                  sleep_hours: sleepHours,
+                };
+              })
+            );
+
+            if (decryptedMetrics.length > 0) {
+              const d0 = decryptedMetrics[0];
+              context.todayRecovery = d0.recovery_score ?? undefined;
+              context.sleepHours = d0.sleep_hours ?? undefined;
+
+              // Calculate trend
+              if (decryptedMetrics.length >= 3) {
+                const recent = decryptedMetrics.slice(0, 3).map((d) => d.recovery_score || 0);
+                const older = decryptedMetrics.slice(-3).map((d) => d.recovery_score || 0);
+                const recentAvg = recent.reduce((a, b) => a + b, 0) / recent.length;
+                const olderAvg = older.reduce((a, b) => a + b, 0) / older.length;
+                context.weeklyRecoveryTrend =
+                  recentAvg > olderAvg + 5 ? "up" : recentAvg < olderAvg - 5 ? "down" : "stable";
+              }
             }
           }
         })()
