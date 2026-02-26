@@ -54,7 +54,7 @@ export default function Page() {
 
           {/* Footer note */}
           <p className="mt-8 text-center text-xs text-[#8B9A8F]">
-            Your ADHD-optimized productivity companion
+            Your personal productivity companion
           </p>
         </div>
       </main>

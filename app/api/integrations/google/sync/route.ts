@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   // Get Google tokens
   const { data: tokenData } = await supabase
     .from("integration_tokens")
-    .select("encrypted_access_token, encrypted_refresh_token, expires_at")
+    .select("access_token, refresh_token, expires_at")
     .eq("user_id", user.id)
     .eq("provider", "google_calendar")
     .single();
@@ -35,11 +35,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    let accessToken = tokenData.encrypted_access_token;
+    let accessToken = tokenData.access_token;
     
     // Check if token is expired and refresh if needed
     if (tokenData.expires_at && new Date(tokenData.expires_at) < new Date()) {
-      if (!tokenData.encrypted_refresh_token) {
+      if (!tokenData.refresh_token) {
         return NextResponse.json(
           { error: "Token expired and no refresh token available" },
           { status: 401 }
@@ -47,14 +47,14 @@ export async function POST(request: NextRequest) {
       }
 
       console.log('Refreshing expired Google token...');
-      const newTokens = await refreshAccessToken(tokenData.encrypted_refresh_token);
+      const newTokens = await refreshAccessToken(tokenData.refresh_token);
       accessToken = newTokens.access_token;
 
       // Update stored tokens
       await supabase
         .from("integration_tokens")
         .update({
-          encrypted_access_token: newTokens.access_token,
+          access_token: newTokens.access_token,
           expires_at: newTokens.expires_at ? new Date(newTokens.expires_at).toISOString() : null,
           updated_at: new Date().toISOString(),
         })
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
         .eq("provider", "google_calendar");
     }
 
-    const client = new GoogleCalendarClient(accessToken, tokenData.encrypted_refresh_token);
+    const client = new GoogleCalendarClient(accessToken, tokenData.refresh_token);
     const result = await pullEventsFromGoogle(user.id, client, trigger);
 
     return NextResponse.json({

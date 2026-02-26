@@ -109,7 +109,7 @@ async function generateWeeklyReview(
     system: `You are a therapist-informed Pattern Analyst trained in DBT and ACT.
 
 Generate a "Week in Review" journal entry that:
-1. Celebrates wins explicitly (ADHD brains need this!)
+1. Celebrates wins explicitly
 2. Identifies patterns without judgment
 3. Notes energy-mood correlations
 4. Applies DBT/ACT lens (values alignment, acceptance)
@@ -137,7 +137,7 @@ Focus Sessions: ${timeBlocks.length} sessions, ${timeBlocks.reduce((s, t) => s +
   await supabase.from("journal_entries").insert({
     user_id: userId,
     entry_date: new Date().toISOString().split("T")[0],
-    encrypted_happened: text,
+    happened: text,
     tags: ["weekly-review", "ai-generated"],
     mood_label: "Calm",
     energy_rating: 5,

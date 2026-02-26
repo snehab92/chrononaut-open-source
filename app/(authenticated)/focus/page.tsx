@@ -31,7 +31,7 @@ import { FocusNoteEditor } from "@/components/focus/focus-note-editor";
 import { FocusCuePopup } from "@/components/focus/focus-cue-popup";
 import { useFocusCues } from "@/hooks/use-focus-cues";
 
-type FocusMode = "admin" | "research" | "writing" | "meeting-prep" | "toastmasters";
+type FocusMode = "admin" | "research" | "writing" | "meeting-prep" | "presentation";
 
 const MODE_CONFIG: Record<FocusMode, {
   label: string;
@@ -73,12 +73,12 @@ const MODE_CONFIG: Record<FocusMode, {
     description: "Context briefing, risk assessment",
     agentType: "executive-coach"
   },
-  toastmasters: {
-    label: "Toastmasters",
+  presentation: {
+    label: "Presentation",
     icon: <Mic className="w-4 h-4" />,
     color: "bg-pink-500",
     bgColor: "bg-pink-50",
-    description: "Speech practice, voice coaching",
+    description: "Speech practice, presentation prep",
     agentType: "executive-coach"
   }
 };
@@ -151,7 +151,7 @@ export default function FocusPage() {
 
   const modeConfig = MODE_CONFIG[mode];
 
-  // Focus Cues - ADHD-informed gentle coaching
+  // Focus Cues - context-aware gentle coaching
   const {
     currentCue,
     dismissCue,
@@ -249,10 +249,6 @@ export default function FocusPage() {
             due_date: null,
             content: null,
             estimated_minutes: null,
-            ticktick_id: null,
-            ticktick_list_id: null,
-            ticktick_list_name: null,
-            ticktick_section_name: null,
           };
           setActiveTimerTask(restoredTask);
           setSelectedTask(restoredTask);
@@ -434,38 +430,21 @@ export default function FocusPage() {
     setGetStartedContent(null);
   };
 
-  // Complete task - update Supabase AND TickTick
+  // Complete task - update in Supabase
   const completeTask = async () => {
     if (!activeTimerTask) return;
-    
+
     const actualMinutes = Math.round(taskTime / 60);
-    
-    // Update in Supabase
+
     await supabase
       .from("tasks")
-      .update({ 
-        completed: true, 
+      .update({
+        completed: true,
         completed_at: new Date().toISOString(),
         actual_minutes: actualMinutes,
       })
       .eq("id", activeTimerTask.id);
-    
-    // Sync to TickTick if connected
-    if (activeTimerTask.ticktick_id) {
-      try {
-        await fetch("/api/integrations/ticktick/complete", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            taskId: activeTimerTask.ticktick_id,
-            projectId: activeTimerTask.ticktick_list_id,
-          }),
-        });
-      } catch (error) {
-        console.error("Failed to sync task completion to TickTick:", error);
-      }
-    }
-    
+
     setActiveTimerTask(null);
     setSelectedTask(null);
     setIsTaskTimerRunning(false);
@@ -495,7 +474,7 @@ Please give me a quick "get started" brief with:
 3. **Cognitive Trap**: One bias or pattern to watch for (perfectionism, scope creep, etc.)
 4. **Time Check**: Realistic time estimate and a checkpoint
 
-Keep it concise and actionable - I have ADHD and need clear, direct guidance.`
+Keep it concise and actionable - I need clear, direct guidance.`
           }],
           agentType: modeConfig.agentType,
           focusMode: mode,
@@ -954,7 +933,7 @@ Keep it concise and actionable - I have ADHD and need clear, direct guidance.`
         </div>
       </div>
 
-      {/* Focus Cue Popup - ADHD-friendly gentle nudges */}
+      {/* Focus Cue Popup - gentle nudges */}
       <FocusCuePopup
         cue={currentCue}
         onDismiss={dismissCue}

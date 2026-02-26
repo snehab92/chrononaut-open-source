@@ -16,7 +16,6 @@ import { cn } from "@/lib/utils";
 interface DashboardClientProps {
   initialTasks: Task[];
   initialEvents: CalendarEvent[];
-  isTickTickConnected: boolean;
   isGoogleCalendarConnected: boolean;
   isWhoopConnected: boolean;
   healthMetrics: {
@@ -44,10 +43,9 @@ interface DashboardClientProps {
   }[];
 }
 
-export function DashboardClient({ 
-  initialTasks, 
+export function DashboardClient({
+  initialTasks,
   initialEvents,
-  isTickTickConnected,
   isGoogleCalendarConnected,
   isWhoopConnected,
   healthMetrics,
@@ -85,34 +83,34 @@ export function DashboardClient({
   }, []);
 
   return (
-    <TaskProvider initialTasks={initialTasks} isConnected={isTickTickConnected}>
+    <TaskProvider initialTasks={initialTasks}>
       <CalendarProvider initialEvents={initialEvents} isConnected={isGoogleCalendarConnected}>
         <div className={cn(
           "transition-all duration-300",
           isChatOpen && "mr-[420px]"
         )}>
           {/* Metrics Panel */}
-          <MetricsPanel 
+          <MetricsPanel
             isWhoopConnected={isWhoopConnected}
             healthMetrics={healthMetrics}
             workouts={workouts}
             journalEntries={journalEntries}
           />
-          
+
           {/* Sync Status */}
           <div className="mt-6">
             <CombinedSyncStatus />
           </div>
-          
+
           {/* Tasks and Calendar Grid */}
           <div className="grid gap-5 lg:grid-cols-3 mt-2">
             {/* Today's Tasks */}
             <div className="p-6 rounded-2xl bg-gradient-to-br from-white to-[#F5F0E6] border border-[#E8DCC4] shadow-sm">
               <div className="mb-4">
                 <h2 className="font-serif text-lg font-semibold text-[#1E3D32]">Tasks</h2>
-                <TaskCount isConnected={isTickTickConnected} />
+                <TaskCount />
               </div>
-              <TaskList isConnected={isTickTickConnected} />
+              <TaskList />
             </div>
 
             {/* Calendar */}
@@ -131,12 +129,8 @@ export function DashboardClient({
 }
 
 // Task count component
-function TaskCount({ isConnected }: { isConnected: boolean }) {
+function TaskCount() {
   const { tasks } = useTaskContext();
-  
-  if (!isConnected) {
-    return <p className="text-sm text-[#8B9A8F]">Connect TickTick to see tasks</p>;
-  }
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -148,7 +142,7 @@ function TaskCount({ isConnected }: { isConnected: boolean }) {
     const dueDate = new Date(task.dueDate);
     return dueDate < endOfWeek;
   });
-  
+
   return (
     <p className="text-sm text-[#8B9A8F]">
       {weekTasks.length} task{weekTasks.length !== 1 ? 's' : ''} this week
@@ -156,10 +150,10 @@ function TaskCount({ isConnected }: { isConnected: boolean }) {
   );
 }
 
-// Event count component  
+// Event count component
 function EventCount({ isConnected }: { isConnected: boolean }) {
   const { events } = useCalendarContext();
-  
+
   if (!isConnected) {
     return <p className="text-sm text-[#8B9A8F]">Connect Google Calendar to see events</p>;
   }
@@ -174,7 +168,7 @@ function EventCount({ isConnected }: { isConnected: boolean }) {
     const startTime = new Date(event.startTime);
     return startTime >= today && startTime < tomorrow;
   });
-  
+
   return (
     <p className="text-sm text-[#8B9A8F]">
       {todayEvents.length} event{todayEvents.length !== 1 ? 's' : ''} today

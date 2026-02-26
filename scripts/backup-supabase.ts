@@ -3,7 +3,7 @@
  * Supabase Database Backup Script
  *
  * Exports all 32 Supabase tables to JSON format with metadata.
- * Preserves E2E encrypted fields as-is (ciphertext).
+ * Data is protected by Supabase RLS (Row Level Security).
  *
  * Usage:
  *   node scripts/backup-supabase.ts

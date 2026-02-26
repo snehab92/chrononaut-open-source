@@ -44,7 +44,7 @@ export function MoodTrackerView() {
 
       const { data, error } = await supabase
         .from("journal_entries")
-        .select("entry_date, mood_label, encrypted_happened, encrypted_feelings")
+        .select("entry_date, mood_label, happened, feelings")
         .gte("entry_date", startDateStr)
         .lte("entry_date", endDateStr)
         .order("entry_date", { ascending: true });

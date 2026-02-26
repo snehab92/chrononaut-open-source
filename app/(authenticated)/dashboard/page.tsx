@@ -9,35 +9,27 @@ async function getInitialData(supabase: any, userId: string) {
     .eq("user_id", userId);
 
   const providers = new Set((integrations || []).map((i: any) => i.provider));
-  const isTickTickConnected = providers.has("ticktick");
   const isGoogleCalendarConnected = providers.has("google_calendar");
   const isWhoopConnected = providers.has("whoop");
 
-  // Fetch tasks if TickTick connected
+  // Fetch tasks (always local)
   let tasks: any[] = [];
-  if (isTickTickConnected) {
-    const { data: taskData, error } = await supabase
-      .from("tasks")
-      .select("*")
-      .eq("user_id", userId)
-      .eq("completed", false)
-      .order("due_date", { ascending: true, nullsFirst: false });
+  const { data: taskData, error: taskError } = await supabase
+    .from("tasks")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("completed", false)
+    .order("due_date", { ascending: true, nullsFirst: false });
 
-    if (!error && taskData) {
-      tasks = taskData.map((task: any) => ({
-        id: task.ticktick_id || task.id,
-        localId: task.id,
-        title: task.title,
-        content: task.content || null,
-        projectId: task.ticktick_list_id,
-        priority: mapLocalPriority(task.priority),
-        dueDate: task.due_date,
-        isCompleted: task.completed,
-        syncStatus: task.sync_status,
-        ticktickListName: task.ticktick_list_name || null,
-        ticktickSectionName: task.ticktick_section_name || null,
-      }));
-    }
+  if (!taskError && taskData) {
+    tasks = taskData.map((task: any) => ({
+      id: task.id,
+      title: task.title,
+      content: task.content || null,
+      priority: task.priority,
+      dueDate: task.due_date,
+      isCompleted: task.completed,
+    }));
   }
 
   // Fetch events if Google Calendar connected
@@ -45,7 +37,7 @@ async function getInitialData(supabase: any, userId: string) {
   if (isGoogleCalendarConnected) {
     const now = new Date();
     const startOfToday = new Date(now);
-    startOfToday.setHours(0, 0, 0, 0); // Include all of today's events, not just future ones
+    startOfToday.setHours(0, 0, 0, 0);
     const thirtyDaysFromNow = new Date(now);
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
@@ -151,7 +143,6 @@ async function getInitialData(supabase: any, userId: string) {
   }
 
   return {
-    isTickTickConnected,
     isGoogleCalendarConnected,
     isWhoopConnected,
     tasks,
@@ -160,16 +151,6 @@ async function getInitialData(supabase: any, userId: string) {
     workouts,
     journalEntries,
   };
-}
-
-// Map local priority (0-4) back to TickTick format (0,1,3,5) for UI consistency
-function mapLocalPriority(localPriority: number): number {
-  switch (localPriority) {
-    case 3: return 5; // high
-    case 2: return 3; // medium
-    case 1: return 1; // low
-    default: return 0; // none
-  }
 }
 
 export default async function DashboardPage() {
@@ -189,7 +170,6 @@ export default async function DashboardPage() {
 
   // Fetch initial data server-side
   const {
-    isTickTickConnected,
     isGoogleCalendarConnected,
     isWhoopConnected,
     tasks: initialTasks,
@@ -212,10 +192,9 @@ export default async function DashboardPage() {
       </div>
 
       {/* Dashboard Client (metrics + tasks + calendar) */}
-      <DashboardClient 
+      <DashboardClient
         initialTasks={initialTasks}
         initialEvents={initialEvents}
-        isTickTickConnected={isTickTickConnected}
         isGoogleCalendarConnected={isGoogleCalendarConnected}
         isWhoopConnected={isWhoopConnected}
         healthMetrics={healthMetrics}

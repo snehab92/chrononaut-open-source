@@ -5,16 +5,11 @@ import { createClient } from "@/lib/supabase/client";
 
 export interface Task {
   id: string;
-  localId: string;
   title: string;
-  content: string | null; // Task description/details - used for [u.e Xm] parsing
-  projectId: string;
+  content: string | null;
   priority: number;
   dueDate: string | null;
   isCompleted: boolean;
-  syncStatus: string;
-  ticktickListName: string | null;
-  ticktickSectionName: string | null;
 }
 
 interface TaskContextValue {
@@ -37,34 +32,21 @@ export function useTaskContext() {
 interface TaskProviderProps {
   children: React.ReactNode;
   initialTasks: Task[];
-  isConnected: boolean;
 }
 
-// Map local priority (0-4) back to TickTick format (0,1,3,5) for UI consistency
-function mapLocalPriority(localPriority: number): number {
-  switch (localPriority) {
-    case 3: return 5; // high
-    case 2: return 3; // medium
-    case 1: return 1; // low
-    default: return 0; // none
-  }
-}
-
-export function TaskProvider({ children, initialTasks, isConnected }: TaskProviderProps) {
+export function TaskProvider({ children, initialTasks }: TaskProviderProps) {
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refreshTasks = useCallback(async () => {
-    if (!isConnected) return;
-    
     setIsLoading(true);
     setError(null);
 
     try {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
-      
+
       if (!user) {
         setError("Not authenticated");
         return;
@@ -82,19 +64,13 @@ export function TaskProvider({ children, initialTasks, isConnected }: TaskProvid
         return;
       }
 
-      // Transform to match Task interface
       const formattedTasks: Task[] = (tasksData || []).map((task: any) => ({
-        id: task.ticktick_id || task.id,
-        localId: task.id,
+        id: task.id,
         title: task.title,
-        content: task.content || null, // Task description for [u.e Xm] parsing
-        projectId: task.ticktick_list_id,
-        priority: mapLocalPriority(task.priority),
+        content: task.content || null,
+        priority: task.priority,
         dueDate: task.due_date,
         isCompleted: task.completed,
-        syncStatus: task.sync_status,
-        ticktickListName: task.ticktick_list_name || null,
-        ticktickSectionName: task.ticktick_section_name || null,
       }));
 
       setTasks(formattedTasks);
@@ -103,7 +79,7 @@ export function TaskProvider({ children, initialTasks, isConnected }: TaskProvid
     } finally {
       setIsLoading(false);
     }
-  }, [isConnected]);
+  }, []);
 
   return (
     <TaskContext.Provider value={{ tasks, isLoading, error, refreshTasks }}>

@@ -62,8 +62,8 @@ try {
       tokens.forEach((token, i) => {
         console.log(`   Token ${i + 1}:`);
         console.log(`     - User ID: ${token.user_id}`);
-        console.log(`     - Has Access Token: ${token.encrypted_access_token ? 'Yes' : 'No'}`);
-        console.log(`     - Has Refresh Token: ${token.encrypted_refresh_token ? 'Yes' : 'No'}`);
+        console.log(`     - Has Access Token: ${token.access_token ? 'Yes' : 'No'}`);
+        console.log(`     - Has Refresh Token: ${token.refresh_token ? 'Yes' : 'No'}`);
         console.log(`     - Expires At: ${token.expires_at || 'Not set'}`);
         console.log(`     - Created: ${token.created_at}`);
         console.log(`     - Updated: ${token.updated_at}`);

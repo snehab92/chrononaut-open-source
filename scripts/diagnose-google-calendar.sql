@@ -11,13 +11,13 @@ SELECT
   scopes,
   created_at,
   updated_at,
-  -- Check if tokens are present (encrypted fields)
-  CASE 
-    WHEN encrypted_access_token IS NOT NULL THEN 'Has access token'
+  -- Check if tokens are present
+  CASE
+    WHEN access_token IS NOT NULL THEN 'Has access token'
     ELSE 'Missing access token'
   END as access_token_status,
-  CASE 
-    WHEN encrypted_refresh_token IS NOT NULL THEN 'Has refresh token'
+  CASE
+    WHEN refresh_token IS NOT NULL THEN 'Has refresh token'
     ELSE 'Missing refresh token'
   END as refresh_token_status,
   -- Check if expired

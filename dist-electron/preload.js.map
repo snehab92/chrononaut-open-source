@@ -1,1 +1,0 @@
-{"version":3,"file":"preload.js","sourceRoot":"","sources":["../electron/preload.ts"],"names":[],"mappings":";;AAAA,uCAAsD;AAEtD,+CAA+C;AAC/C,wBAAa,CAAC,iBAAiB,CAAC,aAAa,EAAE;IAC7C,qBAAqB;IACrB,QAAQ,EAAE,OAAO,CAAC,QAAQ;IAC1B,UAAU,EAAE,IAAI;IAEhB,WAAW;IACX,aAAa,EAAE,GAAG,EAAE,CAAC,sBAAW,CAAC,MAAM,CAAC,aAAa,CAAC;CACvD,CAAC,CAAC"}

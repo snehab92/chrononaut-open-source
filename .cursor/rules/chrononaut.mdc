@@ -23,8 +23,7 @@ alwaysApply: true
 
 ## Database
 - All tables have RLS policies (users own their data)
-- Encrypted fields: journal content, meeting transcripts, ai-executive coach feedback
-- Unencrypted journal data (queryable): dates, mood labels, scores, metadata
+- Data protected by Supabase RLS and encryption at rest
 
 ## Code Style
 - Descriptive variable names

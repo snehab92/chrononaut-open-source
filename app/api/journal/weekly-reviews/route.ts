@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     // Get entries with weekly-review tag
     const { data, error, count } = await supabase
       .from("journal_entries")
-      .select("id, entry_date, encrypted_happened, encrypted_ai_insights, tags, created_at", {
+      .select("id, entry_date, happened, ai_insights, tags, created_at", {
         count: "exact",
       })
       .eq("user_id", user.id)

@@ -84,19 +84,16 @@ export async function POST(request: NextRequest) {
     // Check if entry already exists
     const { data: existing } = await supabase
       .from("journal_entries")
-      .select("id, encrypted_happened")
+      .select("id, happened")
       .eq("user_id", user.id)
       .eq("entry_date", today)
       .single();
 
     if (existing) {
-      // Append to existing entry's "happened" field
-      // Note: Since we're using E2EE, the shortcut can only add unencrypted notes
-      // The user will need to encrypt when they open the full app
+      // Append to existing entry
       const { data, error } = await supabase
         .from("journal_entries")
         .update({
-          // Store as unencrypted for now - user encrypts in app
           location_lat: location_lat || undefined,
           location_lng: location_lng || undefined,
           location_name: location_name || undefined,

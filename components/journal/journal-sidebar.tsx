@@ -1,6 +1,6 @@
 "use client";
 
-import { Menu, BookOpen, Lock } from "lucide-react";
+import { Menu, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -11,10 +11,6 @@ import {
 } from "@/components/ui/sheet";
 import { JournalViewSelector } from "./journal-view-selector";
 import { type JournalViewType } from "@/lib/journal/types";
-import {
-  clearEncryptionData,
-  isEncryptionInitialized,
-} from "@/lib/journal/encryption";
 
 interface JournalSidebarProps {
   currentView: JournalViewType;
@@ -34,16 +30,6 @@ export function JournalSidebar({
     onOpenChange(false); // Close sheet on mobile after selection
   };
 
-  const handleLockJournal = () => {
-    if (confirm("Lock your journal? You'll need to enter your passphrase to unlock.")) {
-      clearEncryptionData();
-      // Reload to show locked state
-      window.location.reload();
-    }
-  };
-
-  const isUnlocked = isEncryptionInitialized();
-
   return (
     <>
       {/* Desktop Sidebar - always visible on md+ */}
@@ -56,20 +42,6 @@ export function JournalSidebar({
           currentView={currentView}
           onViewChange={onViewChange}
         />
-
-        {/* Lock Button - at bottom */}
-        <div className="mt-auto pt-4 border-t border-[#E8DCC4]">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleLockJournal}
-            disabled={!isUnlocked}
-            className="w-full justify-start text-[#8B9A8F] hover:text-[#1E3D32] hover:bg-[#F5F0E6] disabled:opacity-50"
-          >
-            <Lock className="w-4 h-4 mr-2" />
-            {isUnlocked ? "Lock Journal" : "Not encrypted"}
-          </Button>
-        </div>
       </aside>
 
       {/* Mobile Trigger + Sheet */}
@@ -97,20 +69,6 @@ export function JournalSidebar({
                 currentView={currentView}
                 onViewChange={handleViewChange}
               />
-            </div>
-
-            {/* Lock Button - mobile */}
-            <div className="p-4 border-t border-[#E8DCC4]">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleLockJournal}
-                disabled={!isUnlocked}
-                className="w-full justify-start text-[#8B9A8F] hover:text-[#1E3D32] hover:bg-[#F5F0E6] disabled:opacity-50"
-              >
-                <Lock className="w-4 h-4 mr-2" />
-                {isUnlocked ? "Lock Journal" : "Not encrypted"}
-              </Button>
             </div>
           </SheetContent>
         </Sheet>

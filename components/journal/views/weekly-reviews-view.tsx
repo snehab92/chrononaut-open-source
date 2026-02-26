@@ -4,15 +4,9 @@ import { useState, useEffect } from "react";
 import { FileText, ChevronDown, ChevronUp, Calendar, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import {
-  decryptContent,
-  isEncryptionInitialized,
-} from "@/lib/journal/encryption";
 import { type WeeklyReviewEntry } from "@/lib/journal/types";
 
 interface ReviewWithContent extends WeeklyReviewEntry {
-  decryptedContent?: string | null;
-  isDecrypting?: boolean;
   isExpanded?: boolean;
 }
 
@@ -54,8 +48,6 @@ export function WeeklyReviewsView() {
         const newReviews = data.reviews.map((r: WeeklyReviewEntry) => ({
           ...r,
           isExpanded: false,
-          decryptedContent: null,
-          isDecrypting: false,
         }));
 
         if (loadMore) {
@@ -73,63 +65,19 @@ export function WeeklyReviewsView() {
     }
   };
 
-  const toggleExpand = async (id: string) => {
+  const toggleExpand = (id: string) => {
     setReviews((prev) =>
       prev.map((r) => {
         if (r.id !== id) return r;
-
-        const newExpanded = !r.isExpanded;
-
-        // If expanding and content not yet decrypted, decrypt it
-        if (newExpanded && r.decryptedContent === null && r.encrypted_happened) {
-          decryptReviewContent(id, r.encrypted_happened);
-        }
-
-        return { ...r, isExpanded: newExpanded };
+        return { ...r, isExpanded: !r.isExpanded };
       })
     );
   };
 
-  const decryptReviewContent = async (id: string, encrypted: string) => {
-    if (!isEncryptionInitialized()) {
-      setReviews((prev) =>
-        prev.map((r) =>
-          r.id === id
-            ? { ...r, decryptedContent: "[Encrypted - enter passphrase to decrypt]" }
-            : r
-        )
-      );
-      return;
-    }
-
-    setReviews((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, isDecrypting: true } : r))
-    );
-
-    try {
-      const content = await decryptContent(encrypted);
-      setReviews((prev) =>
-        prev.map((r) =>
-          r.id === id
-            ? { ...r, decryptedContent: content, isDecrypting: false }
-            : r
-        )
-      );
-    } catch {
-      setReviews((prev) =>
-        prev.map((r) =>
-          r.id === id
-            ? { ...r, decryptedContent: "[Failed to decrypt]", isDecrypting: false }
-            : r
-        )
-      );
-    }
-  };
-
-  // Get excerpt from encrypted content (first 200 chars when decrypted)
+  // Get excerpt from content (first 200 chars)
   const getExcerpt = (review: ReviewWithContent): string => {
-    if (review.decryptedContent) {
-      return review.decryptedContent.substring(0, 200) + (review.decryptedContent.length > 200 ? "..." : "");
+    if (review.happened) {
+      return review.happened.substring(0, 200) + (review.happened.length > 200 ? "..." : "");
     }
     return "Click to expand and view content...";
   };
@@ -212,20 +160,12 @@ export function WeeklyReviewsView() {
                 {review.isExpanded && (
                   <div className="px-4 pb-4 border-t border-[#E8DCC4]/50">
                     <div className="pt-4">
-                      {review.isDecrypting ? (
-                        <p className="text-sm text-[#8B9A8F] italic">
-                          Decrypting...
-                        </p>
-                      ) : review.decryptedContent ? (
+                      {review.happened ? (
                         <div className="prose prose-sm max-w-none">
                           <div className="text-sm text-[#1E3D32] whitespace-pre-wrap">
-                            {review.decryptedContent}
+                            {review.happened}
                           </div>
                         </div>
-                      ) : review.encrypted_happened ? (
-                        <p className="text-sm text-[#8B9A8F] italic">
-                          Content is encrypted. Decrypting...
-                        </p>
                       ) : (
                         <p className="text-sm text-[#8B9A8F] italic">
                           No content available.

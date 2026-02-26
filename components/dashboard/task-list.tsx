@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { 
-  Circle, Loader2, Calendar, ArrowRight, ChevronDown, 
-  Clock, Sparkles, Info, ArrowUpDown, Sun, Moon, Sunset, Folder
+import { useState } from "react";
+import {
+  Circle, Loader2, Calendar, ChevronDown,
+  ArrowUpDown
 } from "lucide-react";
-import Link from "next/link";
 import {
   Popover,
   PopoverContent,
@@ -13,12 +12,6 @@ import {
 } from "@/components/ui/popover";
 import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,169 +22,36 @@ import { useTaskContext, Task } from "./task-context";
 import { cn } from "@/lib/utils";
 
 interface TaskListProps {
-  isConnected: boolean;
   compact?: boolean;
   onStartTask?: (task: Task) => void;
 }
 
-interface TaskAnalysis {
-  taskId: string;
-  timeEstimate: {
-    userEstimate: number | null;
-    adjustedEstimate: number;
-    aiEstimate: number;
-    displayMinutes: number;
-    adjustmentFactor: number | null;
-    confidence: "none" | "low" | "medium" | "high";
-    source: "user_adjusted" | "user_raw" | "ai_guess";
-    explanation: string;
-    factors: string[];
-  };
-  prioritization: {
-    suggestedOrder: number;
-    suggestedTimeOfDay: "morning" | "afternoon" | "evening" | "anytime";
-    explanation: string;
-    factors: string[];
-  };
-  dataState: "no_data" | "emerging" | "established";
-}
-
 type ViewMode = "today" | "week";
-type SortMode = "priority" | "time-asc" | "time-desc" | "suggested";
+type SortMode = "priority" | "due-date";
 
-// List badge colors - expanded palette for better visual distinction
-const LIST_COLORS = [
-  { bg: "bg-purple-100", text: "text-purple-700", border: "border-purple-200" },
-  { bg: "bg-blue-100", text: "text-blue-700", border: "border-blue-200" },
-  { bg: "bg-green-100", text: "text-green-700", border: "border-green-200" },
-  { bg: "bg-amber-100", text: "text-amber-700", border: "border-amber-200" },
-  { bg: "bg-pink-100", text: "text-pink-700", border: "border-pink-200" },
-  { bg: "bg-cyan-100", text: "text-cyan-700", border: "border-cyan-200" },
-  { bg: "bg-indigo-100", text: "text-indigo-700", border: "border-indigo-200" },
-  { bg: "bg-rose-100", text: "text-rose-700", border: "border-rose-200" },
-  { bg: "bg-teal-100", text: "text-teal-700", border: "border-teal-200" },
-  { bg: "bg-orange-100", text: "text-orange-700", border: "border-orange-200" },
-  { bg: "bg-violet-100", text: "text-violet-700", border: "border-violet-200" },
-  { bg: "bg-emerald-100", text: "text-emerald-700", border: "border-emerald-200" },
-  { bg: "bg-fuchsia-100", text: "text-fuchsia-700", border: "border-fuchsia-200" },
-  { bg: "bg-sky-100", text: "text-sky-700", border: "border-sky-200" },
-  { bg: "bg-lime-100", text: "text-lime-700", border: "border-lime-200" },
-  { bg: "bg-red-100", text: "text-red-700", border: "border-red-200" },
-];
-
-const SECTION_COLORS = [
-  { bg: "bg-slate-100", text: "text-slate-600", border: "border-slate-200" },
-  { bg: "bg-stone-100", text: "text-stone-600", border: "border-stone-200" },
-  { bg: "bg-zinc-100", text: "text-zinc-600", border: "border-zinc-200" },
-  { bg: "bg-neutral-100", text: "text-neutral-600", border: "border-neutral-200" },
-  { bg: "bg-gray-100", text: "text-gray-600", border: "border-gray-200" },
-];
-
-// DJB2 hash function for better distribution
-function getListColor(listName: string) {
-  let hash = 5381;
-  for (let i = 0; i < listName.length; i++) {
-    hash = ((hash << 5) + hash) ^ listName.charCodeAt(i);
-  }
-  return LIST_COLORS[Math.abs(hash) % LIST_COLORS.length];
-}
-
-function getSectionColor(sectionName: string) {
-  let hash = 0;
-  for (let i = 0; i < sectionName.length; i++) {
-    hash = sectionName.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return SECTION_COLORS[Math.abs(hash) % SECTION_COLORS.length];
-}
-
-// Format duration helper
-function formatDuration(minutes: number): string {
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  if (mins === 0) return `${hours}h`;
-  return `${hours}h ${mins}m`;
-}
-
-// Time of day icon
-function TimeOfDayIcon({ time }: { time: string }) {
-  switch (time) {
-    case "morning": return <Sun className="h-3 w-3" />;
-    case "afternoon": return <Sunset className="h-3 w-3" />;
-    case "evening": return <Moon className="h-3 w-3" />;
-    default: return null;
-  }
-}
-
-// Badge colors based on source type
-const sourceColors: Record<string, string> = {
-  ai_guess: "bg-[#F5F0E6] text-[#8B9A8F]",
-  user_raw: "bg-blue-50 text-blue-700",
-  user_adjusted: "bg-green-50 text-green-700",
+const priorityColors: Record<number, string> = {
+  3: "text-red-500",
+  2: "text-orange-500",
+  1: "text-blue-500",
+  0: "text-[#8B9A8F]",
 };
 
-// Confidence colors
-const confidenceAccents: Record<string, string> = {
-  none: "",
-  low: "ring-1 ring-yellow-300",
-  medium: "ring-1 ring-blue-300",
-  high: "ring-1 ring-green-400",
-};
-
-export function TaskList({ isConnected, compact = false, onStartTask }: TaskListProps) {
+export function TaskList({ compact = false, onStartTask }: TaskListProps) {
   const { tasks, refreshTasks } = useTaskContext();
   const [viewMode, setViewMode] = useState<ViewMode>("today");
-  const [sortMode, setSortMode] = useState<SortMode>("suggested");
+  const [sortMode, setSortMode] = useState<SortMode>("priority");
   const [completingTask, setCompletingTask] = useState<string | null>(null);
   const [updatingDate, setUpdatingDate] = useState<string | null>(null);
-  
-  // AI Analysis state
-  const [analyses, setAnalyses] = useState<Record<string, TaskAnalysis>>({});
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [showAiInsights, setShowAiInsights] = useState(true);
-
-  // Fetch AI analysis when tasks change
-  const fetchAnalysis = useCallback(async () => {
-    if (tasks.length === 0) return;
-    
-    setIsAnalyzing(true);
-    try {
-      const response = await fetch("/api/ai/analyze-tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tasks }),
-      });
-      
-      if (response.ok) {
-        const { analyses: analysesArray } = await response.json();
-        const analysesMap: Record<string, TaskAnalysis> = {};
-        analysesArray.forEach((a: TaskAnalysis) => {
-          analysesMap[a.taskId] = a;
-        });
-        setAnalyses(analysesMap);
-      }
-    } catch (error) {
-      console.error("Failed to fetch task analysis:", error);
-    } finally {
-      setIsAnalyzing(false);
-    }
-  }, [tasks]);
-
-  useEffect(() => {
-    if (isConnected && tasks.length > 0) {
-      fetchAnalysis();
-    }
-  }, [isConnected, tasks.length, fetchAnalysis]);
 
   // Filter tasks based on view mode
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  
+
   const endOfWeek = new Date(today);
   endOfWeek.setDate(endOfWeek.getDate() + 7);
 
   const filteredTasks = tasks.filter((task) => {
-    if (!task.dueDate) return false;
+    if (!task.dueDate) return viewMode === "week";
     const dueDate = new Date(task.dueDate);
     dueDate.setHours(0, 0, 0, 0);
 
@@ -209,18 +69,12 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
     switch (sortMode) {
       case "priority":
         return b.priority - a.priority;
-      case "time-asc":
-        const aTime = analyses[a.id]?.timeEstimate.displayMinutes || 999;
-        const bTime = analyses[b.id]?.timeEstimate.displayMinutes || 999;
-        return aTime - bTime;
-      case "time-desc":
-        const aTimeD = analyses[a.id]?.timeEstimate.displayMinutes || 0;
-        const bTimeD = analyses[b.id]?.timeEstimate.displayMinutes || 0;
-        return bTimeD - aTimeD;
-      case "suggested":
-        const aOrder = analyses[a.id]?.prioritization.suggestedOrder || 999;
-        const bOrder = analyses[b.id]?.prioritization.suggestedOrder || 999;
-        return aOrder - bOrder;
+      case "due-date": {
+        if (!a.dueDate && !b.dueDate) return 0;
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+      }
       default:
         return 0;
     }
@@ -228,8 +82,8 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
 
   // Group tasks by day for week view
   const tasksByDay = sortedTasks.reduce((acc, task) => {
-    const dateKey = task.dueDate 
-      ? new Date(task.dueDate).toDateString() 
+    const dateKey = task.dueDate
+      ? new Date(task.dueDate).toDateString()
       : "No Date";
     if (!acc[dateKey]) acc[dateKey] = [];
     acc[dateKey].push(task);
@@ -245,13 +99,10 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
   const handleComplete = async (task: Task) => {
     setCompletingTask(task.id);
     try {
-      const response = await fetch("/api/integrations/ticktick/complete", {
-        method: "POST",
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          taskId: task.id,
-          projectId: task.projectId,
-        }),
+        body: JSON.stringify({ completed: true }),
       });
       if (response.ok) {
         await refreshTasks();
@@ -267,14 +118,10 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
     if (!newDate) return;
     setUpdatingDate(task.id);
     try {
-      const response = await fetch("/api/integrations/ticktick/update-date", {
-        method: "POST",
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          taskId: task.id,
-          projectId: task.projectId,
-          dueDate: newDate.toISOString(),
-        }),
+        body: JSON.stringify({ due_date: newDate.toISOString().split("T")[0] }),
       });
       if (response.ok) {
         await refreshTasks();
@@ -284,13 +131,6 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
     } finally {
       setUpdatingDate(null);
     }
-  };
-
-  const priorityColors: Record<number, string> = {
-    5: "text-red-500",
-    3: "text-yellow-500",
-    1: "text-blue-500",
-    0: "text-[#8B9A8F]",
   };
 
   const formatDate = (dateString: string | null) => {
@@ -330,32 +170,13 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
     return date < today;
   };
 
-  const getDataStateMessage = () => {
-    const firstAnalysis = Object.values(analyses)[0];
-    if (!firstAnalysis) return null;
-    
-    switch (firstAnalysis.dataState) {
-      case "no_data":
-        return "Building your baseline...";
-      case "emerging":
-        return "Learning your patterns...";
-      case "established":
-        return null;
-    }
-  };
-
-  const TaskItem = ({ task, showOrder = false }: { task: Task; showOrder?: boolean }) => {
-    const analysis = analyses[task.id];
-    const listColor = task.ticktickListName ? getListColor(task.ticktickListName) : null;
-    const sectionColor = task.ticktickSectionName ? getSectionColor(task.ticktickSectionName) : null;
-
+  const TaskItem = ({ task }: { task: Task }) => {
     return (
       <div className={cn(
         "p-3 rounded-xl transition-all group border bg-white hover:bg-[#F5F0E6] border-transparent hover:border-[#E8DCC4]",
         compact && "p-2"
       )}>
         <div className="flex items-start gap-3">
-          {/* Completion button */}
           <button
             onClick={() => handleComplete(task)}
             disabled={completingTask === task.id}
@@ -375,17 +196,11 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
           </button>
 
           <div className="flex-1 min-w-0 space-y-2">
-            {/* Title row */}
             <div className="flex items-start justify-between gap-2">
               <p className={cn(
                 "text-sm text-[#1E3D32] leading-relaxed font-medium",
                 compact && "text-xs"
               )}>
-                {showOrder && analysis && (
-                  <span className="inline-flex items-center justify-center w-5 h-5 mr-2 text-xs font-medium bg-[#2D5A47] text-white rounded-full">
-                    {analysis.prioritization.suggestedOrder}
-                  </span>
-                )}
                 {task.title}
               </p>
 
@@ -401,32 +216,7 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
               )}
             </div>
 
-            {/* Row 2: List + Section badges */}
-            {(task.ticktickListName || task.ticktickSectionName) && (
-              <div className="flex items-center gap-2 flex-wrap">
-                {task.ticktickListName && listColor && (
-                  <span className={cn(
-                    "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium border",
-                    listColor.bg, listColor.text, listColor.border
-                  )}>
-                    <Folder className="h-2.5 w-2.5" />
-                    {task.ticktickListName}
-                  </span>
-                )}
-                {task.ticktickSectionName && sectionColor && (
-                  <span className={cn(
-                    "inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium border",
-                    sectionColor.bg, sectionColor.text, sectionColor.border
-                  )}>
-                    {task.ticktickSectionName}
-                  </span>
-                )}
-              </div>
-            )}
-
-            {/* Row 3: Date + AI insights */}
             <div className="flex items-center gap-3 flex-wrap">
-              {/* Date picker/display */}
               <Popover>
                 <PopoverTrigger asChild>
                   <button
@@ -475,72 +265,6 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
                   </div>
                 </PopoverContent>
               </Popover>
-
-            {/* AI Insights */}
-            {showAiInsights && analysis && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className={cn(
-                      "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs cursor-help",
-                      sourceColors[analysis.timeEstimate.source],
-                      confidenceAccents[analysis.timeEstimate.confidence]
-                    )}>
-                      <Clock className="h-3 w-3" />
-                      {analysis.timeEstimate.source === "user_adjusted" && analysis.timeEstimate.userEstimate ? (
-                        <>
-                          <span className="opacity-60 line-through">{formatDuration(analysis.timeEstimate.userEstimate)}</span>
-                          <ArrowRight className="h-2.5 w-2.5" />
-                          <span>{formatDuration(analysis.timeEstimate.displayMinutes)}</span>
-                        </>
-                      ) : (
-                        <span>{formatDuration(analysis.timeEstimate.displayMinutes)}</span>
-                      )}
-                      <Info className="h-2.5 w-2.5 opacity-50" />
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-xs">
-                    <p className="font-medium mb-1">{analysis.timeEstimate.explanation}</p>
-                    <ul className="text-xs space-y-0.5 text-muted-foreground">
-                      {analysis.timeEstimate.factors.map((f, i) => (
-                        <li key={i}>• {f}</li>
-                      ))}
-                    </ul>
-                    <div className="mt-2 pt-2 border-t">
-                      <p className="text-xs font-medium">Prioritization:</p>
-                      <p className="text-xs text-muted-foreground">
-                        Suggested order: #{analysis.prioritization.suggestedOrder}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Best time: {analysis.prioritization.suggestedTimeOfDay}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {analysis.prioritization.explanation}
-                      </p>
-                    </div>
-                  </TooltipContent>
-                </Tooltip>
-
-                {analysis.prioritization.suggestedTimeOfDay !== "anytime" && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-[#F5F0E6] text-[#5C7A6B] cursor-help">
-                        <TimeOfDayIcon time={analysis.prioritization.suggestedTimeOfDay} />
-                        <span className="capitalize">{analysis.prioritization.suggestedTimeOfDay}</span>
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="max-w-xs">
-                      <p className="font-medium mb-1">{analysis.prioritization.explanation}</p>
-                      <ul className="text-xs space-y-0.5 text-muted-foreground">
-                        {analysis.prioritization.factors.map((f, i) => (
-                          <li key={i}>• {f}</li>
-                        ))}
-                      </ul>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-              </TooltipProvider>
-            )}
             </div>
           </div>
         </div>
@@ -548,20 +272,15 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
     );
   };
 
-  if (!isConnected) {
+  if (tasks.length === 0) {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-center h-32 text-[#8B9A8F] text-sm border-2 border-dashed border-[#E8DCC4] rounded-xl">
-          <Link href="/settings" className="flex items-center gap-2 hover:text-[#2D5A47] transition-colors">
-            Connect TickTick to see tasks
-            <ArrowRight className="h-4 w-4" />
-          </Link>
+          No tasks yet. Add one with the + button above.
         </div>
       </div>
     );
   }
-
-  const dataStateMessage = getDataStateMessage();
 
   return (
     <div className="space-y-4">
@@ -592,65 +311,32 @@ export function TaskList({ isConnected, compact = false, onStartTask }: TaskList
           </button>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowAiInsights(!showAiInsights)}
-            className={cn(
-              "h-8 px-2 gap-1",
-              showAiInsights ? "text-[#2D5A47]" : "text-[#8B9A8F]"
-            )}
-          >
-            <Sparkles className="h-4 w-4" />
-            {isAnalyzing && <Loader2 className="h-3 w-3 animate-spin" />}
-          </Button>
-
-          {showAiInsights && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-8 px-2 gap-1">
-                  <ArrowUpDown className="h-4 w-4" />
-                  <span className="text-xs capitalize">{sortMode.replace("-", " ")}</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setSortMode("suggested")}>
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  Suggested Order
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setSortMode("priority")}>
-                  Priority
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setSortMode("time-asc")}>
-                  <Clock className="h-4 w-4 mr-2" />
-                  Quickest First
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setSortMode("time-desc")}>
-                  <Clock className="h-4 w-4 mr-2" />
-                  Longest First
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-8 px-2 gap-1">
+              <ArrowUpDown className="h-4 w-4" />
+              <span className="text-xs capitalize">{sortMode.replace("-", " ")}</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setSortMode("priority")}>
+              Priority
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSortMode("due-date")}>
+              Due Date
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
-
-      {showAiInsights && dataStateMessage && (
-        <div className="flex items-center gap-2 px-3 py-2 bg-[#F5F0E6] rounded-lg text-xs text-[#5C7A6B]">
-          <Sparkles className="h-3 w-3" />
-          {dataStateMessage}
-        </div>
-      )}
 
       {filteredTasks.length === 0 ? (
         <div className="flex items-center justify-center h-32 text-[#8B9A8F] text-sm border-2 border-dashed border-[#E8DCC4] rounded-xl">
-          🎉 {viewMode === "today" ? "All caught up for today!" : "Nothing due this week!"}
+          {viewMode === "today" ? "All caught up for today!" : "Nothing due this week!"}
         </div>
       ) : viewMode === "today" ? (
         <div className="space-y-2">
           {sortedTasks.map((task) => (
-            <TaskItem key={task.id} task={task} showOrder={sortMode === "suggested"} />
+            <TaskItem key={task.id} task={task} />
           ))}
         </div>
       ) : (

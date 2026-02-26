@@ -79,7 +79,7 @@ const ASSESSMENT_TYPES = [
 const ASSESSMENT_KEYWORDS: Record<string, string[]> = {
   self_compassion: ["self-compassion", "self compassion", "scs", "neff"],
   values_alignment: ["values", "valued living", "vlq"],
-  executive_function: ["executive function", "adhd", "ef", "brown"],
+  executive_function: ["executive function", "ef", "brown"],
   strengths: ["strengths", "clifton", "gallup", "via", "character"],
 };
 

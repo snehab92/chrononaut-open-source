@@ -14,7 +14,6 @@ import {
   SPORT_NAMES
 } from './client';
 import { createClient } from '@/lib/supabase/server';
-import { encryptHealthMetrics } from '@/lib/encryption/health-metrics';
 
 export interface SyncResult {
   success: boolean;
@@ -188,30 +187,20 @@ async function syncHealthMetrics(
       const sleepMs = data.sleep?.score?.stage_summary?.total_in_bed_time_milli || 0;
       const sleepHours = sleepMs / (1000 * 60 * 60);
 
-      // Prepare metrics for encryption
-      const metricsToEncrypt = {
-        recovery_score: data.recovery?.score?.recovery_score || null,
-        hrv_rmssd: data.recovery?.score?.hrv_rmssd_milli
-          ? data.recovery.score.hrv_rmssd_milli / 1000
-          : null,
-        resting_hr: data.recovery?.score?.resting_heart_rate || null,
-        sleep_performance: data.sleep?.score?.sleep_consistency_percentage || null,
-        sleep_duration_minutes: sleepHours > 0 ? Math.round(sleepHours * 60) : null,
-        strain_score: data.cycle?.score?.strain || null,
-      };
-
-      // Encrypt metrics using master key
-      const encryptedMetrics = await encryptHealthMetrics(metricsToEncrypt);
-
       const { error } = await supabase
         .from('health_metrics')
         .upsert({
           user_id: userId,
           date,
-          metric_date: date, // Required by original schema
-          // Store encrypted fields (v2)
-          ...encryptedMetrics,
-          // Keep non-sensitive metadata unencrypted
+          metric_date: date,
+          recovery_score: data.recovery?.score?.recovery_score || null,
+          hrv_rmssd: data.recovery?.score?.hrv_rmssd_milli
+            ? data.recovery.score.hrv_rmssd_milli / 1000
+            : null,
+          resting_hr: data.recovery?.score?.resting_heart_rate || null,
+          sleep_performance: data.sleep?.score?.sleep_consistency_percentage || null,
+          sleep_hours: sleepHours > 0 ? Math.round(sleepHours * 100) / 100 : null,
+          strain_score: data.cycle?.score?.strain || null,
           whoop_cycle_id: data.cycle?.id?.toString() || null,
           last_synced_at: new Date().toISOString(),
         }, {

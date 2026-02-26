@@ -41,10 +41,10 @@ export interface JournalEntry {
   id: string;
   user_id: string;
   entry_date: string;
-  encrypted_happened: string | null;
-  encrypted_feelings: string | null;
-  encrypted_grateful: string | null;
-  encrypted_ai_insights: string | null;
+  happened: string | null;
+  feelings: string | null;
+  grateful: string | null;
+  ai_insights: string | null;
   location_name: string | null;
   location_lat: number | null;
   location_lng: number | null;
@@ -100,16 +100,16 @@ export interface CalendarEntry {
 export interface MoodTrackerEntry {
   entry_date: string;
   mood_label: MoodLabel | null;
-  encrypted_happened: string | null;
-  encrypted_feelings: string | null;
+  happened: string | null;
+  feelings: string | null;
 }
 
 // Weekly review entry
 export interface WeeklyReviewEntry {
   id: string;
   entry_date: string;
-  encrypted_happened: string | null;
-  encrypted_ai_insights: string | null;
+  happened: string | null;
+  ai_insights: string | null;
   tags: string[];
   created_at: string;
 }

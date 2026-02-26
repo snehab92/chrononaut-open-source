@@ -18,14 +18,10 @@ create table public.profiles (
   avatar_url text,
   timezone text default 'America/New_York',
   
-  -- ADHD-specific settings
+  -- Productivity preferences
   core_values text[] default '{}',
   wind_down_time time default '18:00',
   max_focus_minutes integer default 90,
-  
-  -- Security (for E2E encryption)
-  encryption_key_hash text,
-  pin_hash text,
   
   -- Onboarding
   onboarding_completed boolean default false,
@@ -51,7 +47,7 @@ create type meeting_type as enum (
   'personal_networking', 'personal_therapy', 'personal_coaching'
 );
 create type focus_mode as enum (
-  'admin', 'research', 'writing', 'meeting_prep', 'toastmasters'
+  'admin', 'research', 'writing', 'meeting_prep', 'presentation'
 );
 create type cue_type as enum (
   'meeting_proximity', 'rabbit_hole', 'task_mismatch', 
@@ -121,18 +117,17 @@ create table public.notes (
 );
 
 -- ============================================
--- 4. TASKS (synced with TickTick)
+-- 4. TASKS
 -- ============================================
--- Bidirectional sync: changes here push to TickTick and vice versa
 
 create table public.tasks (
   id uuid default uuid_generate_v4() primary key,
   user_id uuid references public.profiles(id) on delete cascade not null,
-  
-  -- TickTick sync
-  ticktick_id text unique,
-  ticktick_list_id text,
-  sync_status text default 'synced',
+
+  -- External sync
+  external_id text unique,
+  external_list_id text,
+  sync_status text default 'local_only',
   last_synced_at timestamp with time zone,
   
   -- Task data
@@ -174,24 +169,23 @@ create table public.time_blocks (
 );
 
 -- ============================================
--- 6. JOURNAL ENTRIES (E2E Encrypted)
+-- 6. JOURNAL ENTRIES
 -- ============================================
 -- Day One-style journal with AI-inferred mood/energy
--- Content fields are encrypted client-side before storage
 
 create table public.journal_entries (
   id uuid default uuid_generate_v4() primary key,
   user_id uuid references public.profiles(id) on delete cascade not null,
-  
+
   entry_date date not null,
-  
-  -- Encrypted content (client-side AES-256-GCM)
-  encrypted_happened text,
-  encrypted_feelings text,
-  encrypted_grateful text,
-  encrypted_ai_insights text,
-  
-  -- Unencrypted (for analytics/queries)
+
+  -- Content
+  happened text,
+  feelings text,
+  grateful text,
+  ai_insights text,
+
+  -- Metadata
   location_name text,
   location_lat numeric(10,7),
   location_lng numeric(10,7),
@@ -241,17 +235,15 @@ create table public.health_metrics (
 );
 
 -- ============================================
--- 8. MEETING NOTES (Partially Encrypted)
+-- 8. MEETING NOTES
 -- ============================================
--- Meeting screen data: some fields encrypted, some queryable
--- Encryption badge shown in UI for encrypted meetings
+-- Meeting screen data
 
 create table public.meeting_notes (
   id uuid default uuid_generate_v4() primary key,
   user_id uuid references public.profiles(id) on delete cascade not null,
   note_id uuid references public.notes(id) on delete set null,
-  
-  -- Unencrypted (queryable for dashboard/search)
+
   title text not null,
   attendees text[] default '{}',
   scheduled_start timestamp with time zone,
@@ -259,13 +251,13 @@ create table public.meeting_notes (
   meeting_type meeting_type default 'work_internal',
   risk_level integer check (risk_level between 1 and 5) default 3,
   action_items text[] default '{}',
-  
-  -- Encrypted (client-side)
-  encrypted_prep_notes text,
-  encrypted_meeting_notes text,
-  encrypted_transcript text,
-  encrypted_ai_summary text,
-  encrypted_coach_feedback text,
+
+  -- Content
+  prep_notes text,
+  meeting_notes text,
+  transcript text,
+  ai_summary text,
+  coach_feedback text,
   
   -- Meeting settings
   coach_enabled boolean default true,
@@ -375,17 +367,18 @@ create table public.cue_instances (
 -- ============================================
 -- 12. INTEGRATION TOKENS (OAuth Storage)
 -- ============================================
--- Encrypted storage for TickTick, Whoop, Google tokens
+-- Storage for integration tokens (Whoop, Google, etc.)
+-- Protected by Supabase RLS (Row Level Security)
 
 create table public.integration_tokens (
   id uuid default uuid_generate_v4() primary key,
   user_id uuid references public.profiles(id) on delete cascade not null,
-  
+
   provider text not null,
-  
-  -- Encrypted tokens (server-side encryption)
-  encrypted_access_token text not null,
-  encrypted_refresh_token text,
+
+  -- OAuth tokens
+  access_token text not null,
+  refresh_token text,
   
   -- Token metadata
   token_type text,
@@ -434,7 +427,7 @@ create index idx_notes_created on public.notes(created_at desc);
 create index idx_tasks_user_id on public.tasks(user_id);
 create index idx_tasks_due on public.tasks(due_date);
 create index idx_tasks_completed on public.tasks(completed);
-create index idx_tasks_ticktick on public.tasks(ticktick_id);
+create index idx_tasks_external on public.tasks(external_id);
 
 create index idx_time_blocks_user_id on public.time_blocks(user_id);
 create index idx_time_blocks_started on public.time_blocks(started_at desc);

@@ -29,7 +29,7 @@ jobs:
         env:
           BACKUP_REPO_TOKEN: ${{ secrets.BACKUP_REPO_TOKEN }}
         run: |
-          git clone https://snehab92:${BACKUP_REPO_TOKEN}@github.com/snehab92/chrononaut-backups.git backup-repo
+          git clone https://${GITHUB_ACTOR}:${BACKUP_REPO_TOKEN}@github.com/${GITHUB_REPOSITORY_OWNER}/chrononaut-backups.git backup-repo
 
       - name: Run backup script
         env:

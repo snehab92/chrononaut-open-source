@@ -1,4 +1,4 @@
-// ADHD-Informed Cue Templates
+// Focus Cue Templates
 // Tone: Gentle coach standing next to you, not a nagging parent
 // Principles: Positive framing, body doubling effect, dopamine-friendly
 
@@ -166,7 +166,7 @@ const ENCOURAGEMENT_CUES: CueTemplate[] = [
   {
     type: "encouragement",
     title: "Proud of you",
-    message: "ADHD brain + focused work = harder than people think. You're doing something genuinely difficult.",
+    message: "Deep focus is harder than people think. You're doing something genuinely difficult.",
     emoji: "💜",
     primaryAction: { label: "Thanks friend", action: "dismiss" },
     priority: "low",

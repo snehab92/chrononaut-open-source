@@ -192,7 +192,7 @@ export async function POST() {
         'Trying to live every day prioritizing learning',
       ],
       value_2_slippery: [
-        'Letting RSD and ADHD anxieties dictate behavior—becoming ego-based vs curiosity-based',
+        'Letting anxieties dictate behavior—becoming ego-based vs curiosity-based',
         'Historically slipped in professional settings with parents on differing POVs',
       ],
       value_3_supporting: [

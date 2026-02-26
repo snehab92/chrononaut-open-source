@@ -36,7 +36,6 @@ interface JournalEntryForAnalysis {
   entry_date: string;
   mood_label: string | null;
   energy_rating: number | null;
-  // Note: encrypted content would be decrypted client-side
   // For this analysis, we use mood/energy + any AI insights
 }
 

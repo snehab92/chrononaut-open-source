@@ -1,4 +1,4 @@
-// Focus Cue Types and ADHD-Informed Best Practices (2025)
+// Focus Cue Types and Best Practices
 // Based on research: variable intervals, positive framing, body doubling, dopamine-friendly
 
 export type CueType =
@@ -46,7 +46,7 @@ export interface SessionMetrics {
   focusMode: string;
 }
 
-// Cue cooldown periods (in seconds) - ADHD-informed: not too frequent, not too sparse
+// Cue cooldown periods (in seconds) - balanced: not too frequent, not too sparse
 export const CUE_COOLDOWNS: Record<CueType, number> = {
   session_milestone: 300,    // 5 min between milestone cues
   break_reminder: 600,       // 10 min between break reminders

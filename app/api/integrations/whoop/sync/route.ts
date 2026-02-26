@@ -20,7 +20,7 @@ export async function POST() {
   // Get Whoop tokens
   const { data: tokenData } = await supabase
     .from("integration_tokens")
-    .select("encrypted_access_token, encrypted_refresh_token, expires_at")
+    .select("access_token, refresh_token, expires_at")
     .eq("user_id", user.id)
     .eq("provider", "whoop")
     .single();
@@ -33,11 +33,11 @@ export async function POST() {
   }
 
   try {
-    let accessToken = tokenData.encrypted_access_token;
+    let accessToken = tokenData.access_token;
     
     // Check if token is expired and refresh if needed
     if (tokenData.expires_at && new Date(tokenData.expires_at) < new Date()) {
-      if (!tokenData.encrypted_refresh_token) {
+      if (!tokenData.refresh_token) {
         return NextResponse.json(
           { error: "Token expired and no refresh token available" },
           { status: 401 }
@@ -45,15 +45,15 @@ export async function POST() {
       }
 
       console.log('Refreshing expired Whoop token...');
-      const newTokens = await refreshAccessToken(tokenData.encrypted_refresh_token);
+      const newTokens = await refreshAccessToken(tokenData.refresh_token);
       accessToken = newTokens.access_token;
 
       // Update stored tokens
       await supabase
         .from("integration_tokens")
         .update({
-          encrypted_access_token: newTokens.access_token,
-          encrypted_refresh_token: newTokens.refresh_token,
+          access_token: newTokens.access_token,
+          refresh_token: newTokens.refresh_token,
           expires_at: new Date(newTokens.expires_at).toISOString(),
           updated_at: new Date().toISOString(),
         })

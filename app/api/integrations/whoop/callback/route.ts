@@ -41,9 +41,8 @@ export async function GET(request: NextRequest) {
     // Exchange code for tokens
     const tokens = await exchangeCodeForTokens(code, redirectUri);
 
-    console.log('Whoop OAuth successful, storing encrypted tokens...');
+    console.log('Whoop OAuth successful, storing tokens...');
 
-    // Store tokens with E2EE encryption
     const storeResult = await storeIntegrationToken(
       user.id,
       'whoop',

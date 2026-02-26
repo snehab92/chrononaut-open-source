@@ -7,7 +7,6 @@ import {
   MapPin,
   Image as ImageIcon,
   Sparkles,
-  Lock,
   Save,
   Loader2,
   X,
@@ -26,20 +25,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import {
-  encryptJournalEntry,
-  decryptJournalEntry,
-  isEncryptionInitialized,
-  initializeEncryption,
-  verifyPassphrase,
-} from "@/lib/journal/encryption";
 import { parseExifFromFile, reverseGeocode, ExifData } from "@/lib/journal/exif-parser";
 import { LabelMultiSelect } from "@/components/shared/label-multi-select";
 
@@ -65,9 +50,9 @@ const MOOD_OPTIONS = [
 interface JournalEntry {
   id?: string;
   entry_date: string;
-  encrypted_happened?: string | null;
-  encrypted_feelings?: string | null;
-  encrypted_grateful?: string | null;
+  happened?: string | null;
+  feelings?: string | null;
+  grateful?: string | null;
   location_name?: string | null;
   location_lat?: number | null;
   location_lng?: number | null;
@@ -114,13 +99,6 @@ export function JournalComposer({ date, onSaved }: JournalComposerProps) {
 
   // Tag suggestions from previous entries
   const [allTags, setAllTags] = useState<string[]>([]);
-
-  // Encryption state
-  const [isEncrypted, setIsEncrypted] = useState(false);
-  const [showPassphraseDialog, setShowPassphraseDialog] = useState(false);
-  const [passphrase, setPassphrase] = useState("");
-  const [passphraseError, setPassphraseError] = useState("");
-  const [isNewEncryption, setIsNewEncryption] = useState(false);
 
   // Format date for display
   const formatDate = (dateStr: string) => {
@@ -177,21 +155,10 @@ export function JournalComposer({ date, onSaved }: JournalComposerProps) {
         setEnergyRating(data.entry.energy_rating);
         setEnergyOverride(data.entry.energy_override || false);
 
-        // Check if encrypted content exists
-        if (
-          data.entry.encrypted_happened ||
-          data.entry.encrypted_feelings ||
-          data.entry.encrypted_grateful
-        ) {
-          setIsEncrypted(true);
-          // Need passphrase to decrypt
-          if (isEncryptionInitialized()) {
-            await decryptEntry(data.entry);
-          } else {
-            setShowPassphraseDialog(true);
-            setIsNewEncryption(false);
-          }
-        }
+        // Load plaintext content
+        setHappened(data.entry.happened || "");
+        setFeelings(data.entry.feelings || "");
+        setGrateful(data.entry.grateful || "");
       } else {
         // New entry - reset ALL fields
         setEntry({ entry_date: date });
@@ -207,7 +174,6 @@ export function JournalComposer({ date, onSaved }: JournalComposerProps) {
         setMoodOverride(false);
         setEnergyRating(null);
         setEnergyOverride(false);
-        setIsEncrypted(false);
       }
     } catch (error) {
       console.error("Failed to load entry:", error);
@@ -216,74 +182,20 @@ export function JournalComposer({ date, onSaved }: JournalComposerProps) {
     }
   };
 
-  const decryptEntry = async (entryData: JournalEntry) => {
-    try {
-      const decrypted = await decryptJournalEntry({
-        encrypted_happened: entryData.encrypted_happened,
-        encrypted_feelings: entryData.encrypted_feelings,
-        encrypted_grateful: entryData.encrypted_grateful,
-      });
-      setHappened(decrypted.happened);
-      setFeelings(decrypted.feelings);
-      setGrateful(decrypted.grateful);
-    } catch {
-      console.error("Decryption failed");
-      setShowPassphraseDialog(true);
-    }
-  };
-
-  // Handle passphrase submission
-  const handlePassphraseSubmit = async () => {
-    setPassphraseError("");
-
-    if (isNewEncryption) {
-      // First time setup
-      if (passphrase.length < 8) {
-        setPassphraseError("Passphrase must be at least 8 characters");
-        return;
-      }
-      await initializeEncryption(passphrase);
-      setShowPassphraseDialog(false);
-      setIsEncrypted(true);
-    } else {
-      // Verify existing passphrase
-      const isValid = await verifyPassphrase(passphrase);
-      if (!isValid) {
-        setPassphraseError("Incorrect passphrase");
-        return;
-      }
-      setShowPassphraseDialog(false);
-      if (entry) {
-        await decryptEntry(entry);
-      }
-    }
-    setPassphrase("");
-  };
-
   // Save entry
   const saveEntry = useCallback(async () => {
     if (isSaving) return;
     setIsSaving(true);
 
     try {
-      // Encrypt content if encryption is initialized
-      let encrypted = {
-        encrypted_happened: null as string | null,
-        encrypted_feelings: null as string | null,
-        encrypted_grateful: null as string | null,
-      };
-
-      if (isEncryptionInitialized() && (happened || feelings || grateful)) {
-        encrypted = await encryptJournalEntry({ happened, feelings, grateful });
-        setIsEncrypted(true);
-      }
-
       const response = await fetch("/api/journal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           entry_date: date,
-          ...encrypted,
+          happened: happened || null,
+          feelings: feelings || null,
+          grateful: grateful || null,
           location_name: locationName || null,
           location_lat: locationLat,
           location_lng: locationLng,
@@ -338,7 +250,6 @@ export function JournalComposer({ date, onSaved }: JournalComposerProps) {
 
     setIsInferring(true);
     try {
-      // Decrypt for inference if needed
       const response = await fetch("/api/journal/infer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -454,12 +365,6 @@ export function JournalComposer({ date, onSaved }: JournalComposerProps) {
             {formatDate(date)}
           </h1>
           <div className="flex items-center gap-2 mt-1">
-            {isEncrypted && (
-              <Badge variant="outline" className="text-xs gap-1">
-                <Lock className="w-3 h-3" />
-                Encrypted
-              </Badge>
-            )}
             {lastSaved && (
               <span className="text-xs text-[#8B9A8F]">
                 Saved {lastSaved.toLocaleTimeString()}
@@ -691,48 +596,6 @@ export function JournalComposer({ date, onSaved }: JournalComposerProps) {
           </div>
         </div>
       </div>
-
-      {/* Passphrase Dialog */}
-      <Dialog open={showPassphraseDialog} onOpenChange={setShowPassphraseDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Lock className="w-5 h-5" />
-              {isNewEncryption ? "Set Up Encryption" : "Enter Passphrase"}
-            </DialogTitle>
-            <DialogDescription>
-              {isNewEncryption
-                ? "Create a passphrase to encrypt your journal entries. This keeps your thoughts private."
-                : "Enter your passphrase to decrypt this journal entry."}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 pt-4">
-            <Input
-              type="password"
-              value={passphrase}
-              onChange={(e) => setPassphrase(e.target.value)}
-              placeholder={isNewEncryption ? "Create passphrase (8+ chars)" : "Enter passphrase"}
-              onKeyDown={(e) => e.key === "Enter" && handlePassphraseSubmit()}
-            />
-            {passphraseError && (
-              <p className="text-sm text-red-600">{passphraseError}</p>
-            )}
-            <div className="flex gap-2">
-              <Button onClick={handlePassphraseSubmit} className="flex-1">
-                {isNewEncryption ? "Set Passphrase" : "Unlock"}
-              </Button>
-              {!isNewEncryption && (
-                <Button
-                  variant="outline"
-                  onClick={() => setShowPassphraseDialog(false)}
-                >
-                  Cancel
-                </Button>
-              )}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

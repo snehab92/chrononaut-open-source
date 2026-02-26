@@ -23,9 +23,15 @@
 # electron
 /dist-electron
 
+# supabase local state (contains project-specific refs)
+supabase/.temp/
+
 # misc
 .DS_Store
 *.pem
+
+# Claude Code
+.claude/settings.local.json
 
 # debug
 npm-debug.log*

@@ -21,7 +21,7 @@ const isDev = !app.isPackaged;
 // App URL - uses Vercel deployment in production, localhost in dev
 const APP_URL = isDev
   ? 'http://localhost:3000'
-  : 'https://chrononaut-psi.vercel.app';
+  : process.env.APP_URL || 'https://your-app.vercel.app';
 
 function createWindow(): void {
   const windowState = loadWindowState();
@@ -73,7 +73,6 @@ function createWindow(): void {
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.includes('accounts.google.com') ||
-        url.includes('api.ticktick.com') ||
         url.includes('api.prod.whoop.com')) {
       shell.openExternal(url);
       return { action: 'deny' };

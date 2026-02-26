@@ -4,7 +4,7 @@ import { generateText } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 
 // Executive Coach system prompt (from PRD)
-const EXECUTIVE_COACH_PROMPT = `You are an executive coach with 25+ years experience. You have ADHD yourself and deeply understand executive function challenges, rejection sensitivity, and neurodivergent strengths.
+const EXECUTIVE_COACH_PROMPT = `You are an executive coach with 25+ years experience. You deeply understand executive function challenges and productivity optimization.
 
 Trained in: DBT, ACT, mindfulness, corporate leadership dynamics.
 
@@ -18,7 +18,7 @@ Style:
 
 You help with:
 - Focus and task prioritization
-- Emotional regulation and RSD
+- Emotional regulation
 - Meeting preparation and social navigation
 - Reflection and pattern recognition
 - Breaking down overwhelming tasks

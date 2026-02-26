@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Title required" }, { status: 400 });
     }
 
-    // Create a local task (not synced to TickTick yet)
+    // Create a local task
     const { data: task, error: taskError } = await supabase
       .from("tasks")
       .insert({
@@ -24,7 +24,6 @@ export async function POST(request: NextRequest) {
         title,
         content: content || null,
         priority: 0,
-        sync_status: "pending_push", // Will be pushed to TickTick on next sync
       })
       .select("id")
       .single();

@@ -29,7 +29,7 @@ const MODE_LABELS: Record<string, string> = {
   research: "Research",
   writing: "Writing",
   meeting_prep: "Meeting Prep",
-  toastmasters: "Toastmasters",
+  presentation: "Presentation",
 };
 
 const MODE_COLORS: Record<string, string> = {
@@ -37,7 +37,7 @@ const MODE_COLORS: Record<string, string> = {
   research: "bg-purple-500",
   writing: "bg-amber-500",
   meeting_prep: "bg-green-500",
-  toastmasters: "bg-pink-500",
+  presentation: "bg-pink-500",
 };
 
 function formatDuration(minutes: number): string {

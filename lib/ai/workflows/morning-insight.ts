@@ -167,7 +167,7 @@ async function generateInsightWithAI(
     .filter(Boolean)
     .slice(0, 5);
 
-  const prompt = `Generate a personalized morning briefing for someone with ADHD.
+  const prompt = `Generate a personalized morning briefing.
 
 ## Current Data
 
@@ -211,7 +211,7 @@ Respond in JSON format:
   try {
     const { text } = await generateText({
       model: anthropic("claude-sonnet-4-20250514"),
-      system: `You are a supportive ADHD-aware productivity coach generating a morning briefing.
+      system: `You are a supportive productivity coach generating a morning briefing.
 Be warm but concise. Celebrate what's working. Suggest realistic adjustments based on energy.
 Always respond with valid JSON.`,
       prompt,

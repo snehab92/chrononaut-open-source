@@ -11,7 +11,6 @@ import {
   type DualAudioDevices
 } from "@/lib/transcription/audio-capture";
 import { DeepgramClient, type TranscriptSegment } from "@/lib/transcription/deepgram-client";
-import { encryptContent, decryptContent, isEncryptionInitialized } from "@/lib/journal/encryption";
 import {
   Mic,
   Square,
@@ -354,29 +353,22 @@ export function MeetingTranscriptionWidget({
         setDuration(data.transcription_duration_seconds || 0);
         setSpeakerMap(data.speaker_map || {});
 
-        // Load transcript segments (handle both encrypted and plain formats)
+        // Load transcript segments
         // Supports both old line-based and new paragraph-based formats
-        if (data.encrypted_transcript_segments?.length > 0) {
-          const decryptedItems = await Promise.all(
-            data.encrypted_transcript_segments.map(
-              async (seg: { encrypted?: string; data?: TranscriptLine | TranscriptParagraph }) => {
-                // Plain JSON format (unencrypted)
-                if (seg.data) return seg.data;
-                // Encrypted format
-                if (seg.encrypted) {
-                  const decrypted = await decryptContent(seg.encrypted);
-                  return decrypted ? JSON.parse(decrypted) : null;
-                }
-                return null;
-              }
-            )
-          );
-          const validItems = decryptedItems.filter(Boolean);
+        if (data.transcript_segments?.length > 0) {
+          const items = data.transcript_segments.map(
+            (seg: { data?: TranscriptLine | TranscriptParagraph } | TranscriptLine | TranscriptParagraph) => {
+              // Wrapped in { data: ... } format
+              if ('data' in seg && seg.data) return seg.data;
+              // Direct format
+              return seg;
+            }
+          ).filter(Boolean);
 
           // Check if it's old line format (has isFinal) or new paragraph format (has startTime)
-          if (validItems.length > 0 && 'isFinal' in validItems[0]) {
+          if (items.length > 0 && 'isFinal' in items[0]) {
             // Convert old line format to paragraphs
-            const lines = validItems as TranscriptLine[];
+            const lines = items as TranscriptLine[];
             const convertedParagraphs: TranscriptParagraph[] = [];
             let currentPara: TranscriptParagraph | null = null;
 
@@ -402,21 +394,18 @@ export function MeetingTranscriptionWidget({
             setParagraphs(convertedParagraphs);
           } else {
             // New paragraph format
-            setParagraphs(validItems as TranscriptParagraph[]);
+            setParagraphs(items as TranscriptParagraph[]);
           }
         }
 
-        // Load manual notes (try decrypt, fall back to plain text)
-        if (data.encrypted_meeting_notes) {
-          const notes = await decryptContent(data.encrypted_meeting_notes);
-          // If decryption fails/returns null, it might be plain text
-          setManualNotes(notes || data.encrypted_meeting_notes || "");
+        // Load manual notes
+        if (data.meeting_notes) {
+          setManualNotes(data.meeting_notes);
         }
 
-        // Load AI summary (try decrypt, fall back to plain text)
-        if (data.encrypted_ai_summary) {
-          const summary = await decryptContent(data.encrypted_ai_summary);
-          setAiSummary(summary || data.encrypted_ai_summary || "");
+        // Load AI summary
+        if (data.ai_summary) {
+          setAiSummary(data.ai_summary);
         }
       }
     } catch (err) {
@@ -746,39 +735,17 @@ export function MeetingTranscriptionWidget({
     if (!meetingNoteId) return;
 
     try {
-      const useEncryption = isEncryptionInitialized();
-
-      // Prepare transcript paragraphs (encrypt if available, otherwise store as JSON)
-      const encryptedSegments = useEncryption
-        ? await Promise.all(
-            paragraphs.map(async (para) => ({
-              encrypted: await encryptContent(JSON.stringify(para)),
-            }))
-          )
-        : paragraphs.map((para) => ({ data: para })); // Store as plain JSON
-
-      // Prepare manual notes
-      const encryptedNotes = manualNotes
-        ? useEncryption
-          ? await encryptContent(manualNotes)
-          : manualNotes
-        : null;
-
-      // Prepare AI summary
-      const encryptedSummary = aiSummary
-        ? useEncryption
-          ? await encryptContent(aiSummary)
-          : aiSummary
-        : null;
+      // Store transcript paragraphs as plain JSON
+      const segments = paragraphs.map((para) => ({ data: para }));
 
       await supabase
         .from("meeting_notes")
         .update({
           transcription_duration_seconds: duration,
           speaker_map: speakerMap,
-          encrypted_transcript_segments: encryptedSegments,
-          encrypted_meeting_notes: encryptedNotes,
-          encrypted_ai_summary: encryptedSummary,
+          transcript_segments: segments,
+          meeting_notes: manualNotes || null,
+          ai_summary: aiSummary || null,
         })
         .eq("id", meetingNoteId);
     } catch (err) {
@@ -1057,7 +1024,7 @@ export function MeetingTranscriptionWidget({
                 <Input
                   value={participants}
                   onChange={(e) => setParticipants(e.target.value)}
-                  placeholder="Participants: Carsten, Sneha, John..."
+                  placeholder="Participants: Alice, Bob, Carol..."
                   className="h-8 text-sm border-[#E8DCC4] focus:border-[#2D5A47] placeholder:text-[#8B9A8F]/60"
                 />
               </div>

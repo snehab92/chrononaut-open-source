@@ -30,7 +30,7 @@ export default async function OnboardingPage() {
         <div className="mb-8 text-center">
           <h1 className="text-3xl font-bold mb-2">Welcome to Chrononaut</h1>
           <p className="text-muted-foreground">
-            Let&apos;s set up your ADHD-optimized workspace
+            Let&apos;s set up your personal workspace
           </p>
         </div>
         <OnboardingForm 

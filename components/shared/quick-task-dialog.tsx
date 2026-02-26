@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, createContext, useContext } from "react";
-import { Plus, Loader2, Calendar, Flag, FolderOpen, ChevronDown, Inbox } from "lucide-react";
+import { Plus, Loader2, Calendar, Flag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -9,19 +9,50 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
-import { parseQuickAdd } from "@/lib/ticktick/quick-add-parser";
 
-interface TickTickProject {
-  id: string;
-  name: string;
+// Simple inline quick-add parser (no external dependency)
+function parseQuickAdd(input: string): { title: string; priority?: number; dueDate?: string } {
+  let text = input.trim();
+  let priority: number | undefined;
+  let dueDate: string | undefined;
+
+  // Parse priority
+  const priorityMatch = text.match(/\s*!(high|med|medium|low)\s*/i);
+  if (priorityMatch) {
+    const p = priorityMatch[1].toLowerCase();
+    priority = p === "high" ? 3 : p === "med" || p === "medium" ? 2 : 1;
+    text = text.replace(priorityMatch[0], " ").trim();
+  }
+
+  // Parse due date keywords
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const dueDatePatterns: [RegExp, () => Date][] = [
+    [/\btoday\b/i, () => new Date(today)],
+    [/\btomorrow\b/i, () => { const d = new Date(today); d.setDate(d.getDate() + 1); return d; }],
+    [/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i, () => {
+      const days = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+      const target = days.indexOf(text.match(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i)![1].toLowerCase());
+      const d = new Date(today);
+      const current = d.getDay();
+      const diff = (target - current + 7) % 7 || 7;
+      d.setDate(d.getDate() + diff);
+      return d;
+    }],
+  ];
+
+  for (const [pattern, getDate] of dueDatePatterns) {
+    if (pattern.test(text)) {
+      dueDate = getDate().toISOString();
+      text = text.replace(pattern, " ").trim();
+      break;
+    }
+  }
+
+  return { title: text, priority, dueDate };
 }
 
 // Context for controlling the dialog globally
@@ -61,7 +92,6 @@ export function QuickTaskProvider({ children }: { children: React.ReactNode }) {
 
       if (e.key === "/") {
         slashPressed = true;
-        // Reset after 1 second if no 't' follows
         if (slashTimeout) clearTimeout(slashTimeout);
         slashTimeout = setTimeout(() => {
           slashPressed = false;
@@ -75,7 +105,6 @@ export function QuickTaskProvider({ children }: { children: React.ReactNode }) {
         if (slashTimeout) clearTimeout(slashTimeout);
         setOpen(true);
       } else if (slashPressed && e.key !== "t") {
-        // Any other key resets the slash state
         slashPressed = false;
         if (slashTimeout) clearTimeout(slashTimeout);
       }
@@ -103,15 +132,15 @@ interface QuickTaskDialogProps {
 
 // Priority display helpers
 const PRIORITY_COLORS: Record<number, string> = {
-  5: "text-red-500",
-  3: "text-orange-500",
+  3: "text-red-500",
+  2: "text-orange-500",
   1: "text-blue-500",
   0: "text-gray-400",
 };
 
 const PRIORITY_NAMES: Record<number, string> = {
-  5: "High",
-  3: "Medium",
+  3: "High",
+  2: "Medium",
   1: "Low",
   0: "None",
 };
@@ -119,38 +148,13 @@ const PRIORITY_NAMES: Record<number, string> = {
 function QuickTaskDialog({ open, onOpenChange }: QuickTaskDialogProps) {
   const [input, setInput] = useState("");
   const [isCreating, setIsCreating] = useState(false);
-  const [projects, setProjects] = useState<TickTickProject[]>([]);
-  const [selectedProject, setSelectedProject] = useState<TickTickProject | null>(null);
-  const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const supabase = createClient();
-
-  // Fetch TickTick projects when dialog opens
-  useEffect(() => {
-    if (open && projects.length === 0) {
-      fetchProjects();
-    }
-  }, [open]);
-
-  const fetchProjects = async () => {
-    setIsLoadingProjects(true);
-    try {
-      const response = await fetch("/api/integrations/ticktick/projects");
-      if (response.ok) {
-        const data = await response.json();
-        setProjects(data.projects || []);
-      }
-    } catch {
-      console.log("Failed to fetch TickTick projects");
-    } finally {
-      setIsLoadingProjects(false);
-    }
-  };
 
   // Parse input as user types
   const parsed = useMemo(() => parseQuickAdd(input), [input]);
 
-  // Check if we have any metadata to show (removed listName and sectionName)
-  const hasMetadata = parsed.priority !== undefined || parsed.dueDate || selectedProject;
+  // Check if we have any metadata to show
+  const hasMetadata = (parsed.priority !== undefined && parsed.priority > 0) || parsed.dueDate;
 
   const handleCreate = async () => {
     if (!parsed.title.trim()) return;
@@ -163,46 +167,14 @@ function QuickTaskDialog({ open, onOpenChange }: QuickTaskDialogProps) {
         return;
       }
 
-      // Try to create in TickTick first if connected
-      let ticktickId: string | null = null;
-      let ticktickListId: string | null = null;
-
-      try {
-        const response = await fetch("/api/integrations/ticktick/tasks", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: parsed.title.trim(),
-            priority: parsed.priority || 0,
-            dueDate: parsed.dueDate || null,
-            projectId: selectedProject?.id || undefined,
-          }),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          ticktickId = data.ticktickId;
-          ticktickListId = data.projectId;
-        }
-      } catch {
-        // TickTick not connected or failed - continue with local only
-        console.log("TickTick sync skipped - not connected or failed");
-      }
-
-      // Map TickTick priority to local priority
-      const localPriority = parsed.priority === 5 ? 3 : parsed.priority === 3 ? 2 : parsed.priority === 1 ? 1 : 0;
-
-      // Create local task (with ticktick_id if available)
+      // Create local task
       const { error } = await supabase
         .from("tasks")
         .insert({
           user_id: user.id,
           title: parsed.title.trim(),
-          priority: localPriority,
+          priority: parsed.priority || 0,
           due_date: parsed.dueDate ? parsed.dueDate.split("T")[0] : null,
-          ticktick_id: ticktickId,
-          ticktick_list_id: ticktickListId,
-          sync_status: ticktickId ? "synced" : "local_only",
         });
 
       if (error) {
@@ -212,7 +184,6 @@ function QuickTaskDialog({ open, onOpenChange }: QuickTaskDialogProps) {
 
       // Success - close and reset
       setInput("");
-      setSelectedProject(null);
       onOpenChange(false);
     } catch (error) {
       console.error("Error creating task:", error);
@@ -261,49 +232,6 @@ function QuickTaskDialog({ open, onOpenChange }: QuickTaskDialogProps) {
               className="text-lg"
             />
 
-            {/* List picker */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-[#8B9A8F]">List:</span>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 gap-1.5 border-[#E8DCC4] text-[#5C7A6B]"
-                    disabled={isLoadingProjects}
-                  >
-                    {selectedProject ? (
-                      <>
-                        <FolderOpen className="w-3.5 h-3.5" />
-                        {selectedProject.name}
-                      </>
-                    ) : (
-                      <>
-                        <Inbox className="w-3.5 h-3.5" />
-                        Inbox
-                      </>
-                    )}
-                    <ChevronDown className="w-3.5 h-3.5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem onClick={() => setSelectedProject(null)}>
-                    <Inbox className="w-4 h-4 mr-2" />
-                    Inbox
-                  </DropdownMenuItem>
-                  {projects.map((project) => (
-                    <DropdownMenuItem
-                      key={project.id}
-                      onClick={() => setSelectedProject(project)}
-                    >
-                      <FolderOpen className="w-4 h-4 mr-2" />
-                      {project.name}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-
             {/* Shorthand hints */}
             <p className="text-xs text-[#8B9A8F]">
               Shortcuts: <code className="bg-[#F5F0E6] px-1 rounded">!high</code>{" "}
@@ -327,12 +255,6 @@ function QuickTaskDialog({ open, onOpenChange }: QuickTaskDialogProps) {
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-[#F5F0E6] text-[#5C7A6B]">
                     <Calendar className="w-3 h-3" />
                     {formatDueDate(parsed.dueDate)}
-                  </span>
-                )}
-                {selectedProject && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-[#F5F0E6] text-[#5C7A6B]">
-                    <FolderOpen className="w-3 h-3" />
-                    {selectedProject.name}
                   </span>
                 )}
               </div>

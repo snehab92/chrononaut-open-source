@@ -1,5 +1,5 @@
 // Focus Cue Evaluation Engine
-// ADHD-informed: variable intervals, context-aware, not annoying
+// Variable intervals, context-aware, not annoying
 
 import {
   FocusCue,
@@ -41,7 +41,7 @@ function canFireAnyCue(metrics: SessionMetrics): boolean {
   return secondsSinceLast >= GLOBAL_CUE_COOLDOWN;
 }
 
-// Add some randomness to prevent predictable patterns (ADHD brains habituate to patterns)
+// Add some randomness to prevent predictable patterns (users habituate to patterns)
 function addJitter(baseSeconds: number, jitterPercent: number = 0.2): number {
   const jitter = baseSeconds * jitterPercent;
   return baseSeconds + (Math.random() * jitter * 2 - jitter);

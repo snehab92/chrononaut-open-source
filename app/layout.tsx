@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Geist, Lora } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { ElectronTitleBar } from "@/components/electron-title-bar";
-import { EncryptionSetupDialog } from "@/components/encryption/setup-dialog";
 import "./globals.css";
 
 const defaultUrl = process.env.VERCEL_URL
@@ -12,7 +11,7 @@ const defaultUrl = process.env.VERCEL_URL
 export const metadata: Metadata = {
   metadataBase: new URL(defaultUrl),
   title: "Chrononaut | Master Your Time",
-  description: "ADHD-optimized productivity and social intelligence companion",
+  description: "Your personal productivity and well-being companion",
 };
 
 const geistSans = Geist({
@@ -42,7 +41,6 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <ElectronTitleBar />
-          <EncryptionSetupDialog />
           {children}
         </ThemeProvider>
       </body>

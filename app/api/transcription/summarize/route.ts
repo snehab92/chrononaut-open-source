@@ -70,7 +70,6 @@ export async function POST(req: Request) {
     });
 
     // Optionally update the meeting note with the summary
-    // (encryption happens client-side before save)
     if (meetingNoteId) {
       // Just update the status to indicate summary was generated
       await supabase

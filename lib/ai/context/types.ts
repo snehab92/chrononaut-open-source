@@ -50,7 +50,7 @@ export interface LiveContext {
   sleepQuality?: string;
   sleepHours?: number;
 
-  // Tasks (from TickTick)
+  // Tasks
   todaysTasks?: TaskSummary[];
   overdueTasks?: TaskSummary[];
   completedToday?: number;
