@@ -15,6 +15,7 @@ interface OnboardingFormProps {
 export function OnboardingForm({ userId, initialName }: OnboardingFormProps) {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [loadSampleData, setLoadSampleData] = useState(true);
   const [formData, setFormData] = useState({
     fullName: initialName,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -43,6 +44,13 @@ export function OnboardingForm({ userId, initialName }: OnboardingFormProps) {
       console.error("Onboarding error:", error);
       setIsLoading(false);
       return;
+    }
+
+    // Seed sample data if opted in (fire-and-forget, don't block navigation)
+    if (loadSampleData) {
+      fetch("/api/seed-sample-data", { method: "POST" }).catch(() => {
+        // Non-critical — user can still use the app without sample data
+      });
     }
 
     router.push("/dashboard");
@@ -100,8 +108,26 @@ export function OnboardingForm({ userId, initialName }: OnboardingFormProps) {
         </p>
       </div>
 
+      <div className="flex items-start gap-3 p-3 rounded-lg bg-[#F5F0E6] border border-[#E8DCC4]">
+        <input
+          type="checkbox"
+          id="loadSampleData"
+          checked={loadSampleData}
+          onChange={(e) => setLoadSampleData(e.target.checked)}
+          className="mt-0.5 h-4 w-4 rounded border-[#E8DCC4] text-[#2D5A47] focus:ring-[#2D5A47]"
+        />
+        <div>
+          <Label htmlFor="loadSampleData" className="text-sm font-medium text-[#1E3D32] cursor-pointer">
+            Load sample data
+          </Label>
+          <p className="text-xs text-[#5C7A6B] mt-0.5">
+            Add example notes, tasks, and a journal entry so you can explore features right away
+          </p>
+        </div>
+      </div>
+
       <Button type="submit" className="w-full" disabled={isLoading}>
-        {isLoading ? "Setting up..." : "Let's Go →"}
+        {isLoading ? "Setting up..." : "Let's Go \u2192"}
       </Button>
     </form>
   );

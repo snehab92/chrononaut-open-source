@@ -1,9 +1,35 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, useRef, Component, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { ChatDrawer } from "../chat-drawer";
 import { AgentType } from "@/lib/ai/agents";
+
+// Error boundary to prevent chat drawer crashes from taking down the whole app
+class ChatErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("[ChatDrawer] Error caught by boundary:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return null; // Silently hide the broken drawer rather than crashing the app
+    }
+    return this.props.children;
+  }
+}
 
 interface FocusContextData {
   focusMode?: string;
@@ -151,15 +177,17 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       defaultAgent,
     }}>
       {children}
-      <ChatDrawer 
-        isOpen={isOpen} 
-        onClose={closeChat} 
-        onMinimize={minimizeChat}
-        contextType={context?.type || currentContextType}
-        contextId={context?.id}
-        defaultAgentOverride={defaultAgent}
-        focusContext={context?.context}
-      />
+      <ChatErrorBoundary>
+        <ChatDrawer
+          isOpen={isOpen}
+          onClose={closeChat}
+          onMinimize={minimizeChat}
+          contextType={context?.type || currentContextType}
+          contextId={context?.id}
+          defaultAgentOverride={defaultAgent}
+          focusContext={context?.context}
+        />
+      </ChatErrorBoundary>
       {/* Floating chat button - always visible when minimized or closed */}
       {(!isOpen || isMinimized) && (
         <button
